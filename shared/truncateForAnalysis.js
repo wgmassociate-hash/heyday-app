@@ -1,7 +1,7 @@
 import { parseMessages } from '../src/utils/parseChat.js'
 
-export const ANALYSIS_MAX_MESSAGES = 250
-export const ANALYSIS_MAX_CHARS = 8000
+export const ANALYSIS_MAX_MESSAGES = 350
+export const ANALYSIS_MAX_CHARS = 14000
 
 function formatMessage(m) {
   if (m.timestamp) return `${m.timestamp}, ${m.speaker} : ${m.content}`

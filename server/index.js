@@ -52,7 +52,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     hasApiKey: Boolean(process.env.ANTHROPIC_API_KEY),
-    model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5',
+    model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
     ocrModel: process.env.ANTHROPIC_OCR_MODEL || 'claude-haiku-4-5',
   })
 })

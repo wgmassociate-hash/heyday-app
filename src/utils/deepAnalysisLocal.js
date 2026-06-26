@@ -254,14 +254,15 @@ function classifyMoment(content) {
 }
 
 function momentInsight(type, content, relationType) {
+  const quoteHint = content.length > 12 ? `「${content.slice(0, 24)}${content.length > 24 ? '…' : ''}」` : '이 메시지'
   const insights = {
-    approach: '관계를 한 단계 진전시키려는 **적극적 접근** 신호입니다.',
-    tension: '**밀당·긴장감**이 형성된 순간입니다.',
-    warmth: '**정서적 온기**가 교환된 구간입니다.',
-    distance: '짧고 절제된 답장 — **거리두기·바쁨** 신호일 수 있습니다.',
-    confession: '**감정 노출**이 이루어진 핵심 순간입니다.',
-    humor: '**유머 공유**는 심리적 안전지대 형성의 지표입니다.',
-    turning_point: '대화 흐름이 바뀐 **관계 전환점**입니다.',
+    approach: `${quoteHint}는 관계를 한 단계 진전시키려는 적극적 접근 신호입니다. 만남·약속·관심 표현이 포함되면 상대의 호감이나 편안함이 어느 정도 있는 상태일 수 있습니다.`,
+    tension: `${quoteHint} 구간에서 밀당·긴장감이 형성된 순간입니다. 짧은 답장이나 말투 변화는 관계 온도를 시험하는 패턴으로 읽힐 수 있습니다.`,
+    warmth: `${quoteHint}에서 정서적 온기가 교환된 구간입니다. 장난·공감·긴 답장은 심리적 안전감이 형성되고 있다는 긍정 신호입니다.`,
+    distance: `${quoteHint}처럼 짧고 절제된 답장은 거리두기·바쁨·관심 감소 신호일 수 있습니다. 단, 맥락상 농담이면 다르게 해석해야 합니다.`,
+    confession: `${quoteHint}는 감정 노출이 이루어진 핵심 순간입니다. 호감·그리움·설렘 표현은 관계의 전환점이 될 수 있습니다.`,
+    humor: `${quoteHint}에서 유머가 공유되었습니다. 웃음과 밈 교환은 친밀감과 편안함의 지표이며, 부담 없는 관계 유지에 도움이 됩니다.`,
+    turning_point: `${quoteHint} 전후로 대화 흐름이 바뀐 관계 전환점입니다. 이후 답장 속도·말투 변화를 함께 보면 의미가 더 분명해집니다.`,
   }
   const base = insights[type] || insights.warmth
   return relationType !== 'romantic' ? base.replace(/호감|썸|설렘/g, '친밀감') : base
@@ -307,11 +308,13 @@ function buildPsychologySummary(relationType, mirroring, asymmetry, timeline, mo
     : ''
 
   return [
-    `${spanNote}대화 분석 — 텍스트 미러링 ${mirroring.score}점.`,
-    `답장 속도: ${asymmetry.fasterSide} 우위(${asymmetry.gapRatio}). ${asymmetry.avgReplyLabel}.`,
-    `기간별 ${trendWord} 추세(${first.score}→${last.score}점, ${timeline.length}구간).`,
-    momentQuote ? `${momentQuote} — 관계의 핵심 포인트.` : '',
-  ].filter(Boolean).join(' ')
+    `${spanNote}대화를 기간별로 나눠 보면 텍스트 미러링 ${mirroring.score}점으로, 서로 말투·표현을 따라 하는 정도가 ${mirroring.score >= 60 ? '높은' : '보통'} 편입니다.`,
+    `답장 속도는 ${asymmetry.fasterSide} 쪽이 더 빠른 패턴(${asymmetry.gapRatio})입니다. ${asymmetry.avgReplyLabel || '빠른 쪽이 대화에 더 적극적으로 반응하는 경향이 있을 수 있습니다.'}`,
+    `기간별 추세는 ${trendWord} 흐름(${first.score}→${last.score}점, ${timeline.length}구간)입니다. 초반과 최근의 분위기 차이를 함께 보는 것이 중요합니다.`,
+    momentQuote
+      ? `${momentQuote} 같은 메시지가 관계의 핵심 포인트로 보입니다. 이 순간 전후 답장 길이·이모티콘 사용 변화도 참고하세요.`
+      : '특정 결정적 한 마디보다 전반적인 답장 패턴과 주제 변화가 관계 온도를 좌우합니다.',
+  ].filter(Boolean).join('\n\n')
 }
 
 /**

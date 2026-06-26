@@ -168,7 +168,7 @@ export default function ResultStep({ result, onReset }) {
           <h3 className="font-black mb-2 flex items-center gap-2 text-violet-200">
             <span>🧬</span> 관계 심리 분석
           </h3>
-          <p className="text-sm md:text-base leading-relaxed text-violet-50/95">{psychologySummary}</p>
+          <p className="text-sm md:text-base leading-relaxed text-violet-50/95 whitespace-pre-line">{psychologySummary}</p>
         </div>
       )}
 
@@ -192,7 +192,7 @@ export default function ResultStep({ result, onReset }) {
         <h3 className="font-black text-gray-800 mb-1 flex items-center gap-2">
           <span>⚖️</span> 누가 더 리드?
         </h3>
-        <p className="text-brand-600 font-semibold text-sm mb-4">{dominance}</p>
+        <p className="text-brand-600 font-semibold text-sm mb-4 whitespace-pre-line">{dominance}</p>
         <DominanceGraph detail={dominanceDetail} />
       </div>
 
@@ -207,9 +207,9 @@ export default function ResultStep({ result, onReset }) {
 
       <div className="bg-gradient-to-br from-brand-50 to-violet-50 rounded-2xl border border-brand-100 p-6 mb-6">
         <h3 className="font-black text-gray-800 mb-3 flex items-center gap-2">
-          <span>🤖</span> AI 한줄 요약
+          <span>🤖</span> AI 대화 요약
         </h3>
-        <p className="text-gray-700 leading-relaxed text-sm md:text-base">{aiSummary}</p>
+        <p className="text-gray-700 leading-relaxed text-sm md:text-base whitespace-pre-line">{aiSummary}</p>
       </div>
 
       {solution && (

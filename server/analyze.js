@@ -3,7 +3,7 @@ import { ANALYSIS_SYSTEM_PROMPT } from '../src/utils/apiPrompt.js'
 import { enrichResult } from '../shared/enrichResult.js'
 import { truncateChatForAnalysis } from '../shared/truncateForAnalysis.js'
 
-const DEFAULT_MODEL = 'claude-haiku-4-5'
+const DEFAULT_MODEL = 'claude-sonnet-4-6'
 
 function getClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -38,12 +38,13 @@ export async function analyzeWithClaude(anonymizedText) {
 
   const message = await client.messages.create({
     model: process.env.ANTHROPIC_MODEL || DEFAULT_MODEL,
-    max_tokens: 2048,
+    max_tokens: 4096,
     system: ANALYSIS_SYSTEM_PROMPT,
     messages: [
       {
         role: 'user',
-        content: `아래는 카카오톡 대화입니다. 「나」=본인, 「사용자」/사용자A=익명화된 상대방. JSON만 반환하세요.${truncationNote}\n\n---\n${apiText}\n---`,
+        content: `아래는 카카오톡 대화입니다. 「나」=본인, 「사용자」/사용자A=익명화된 상대방.
+각 텍스트 필드(aiSummary, psychologySummary, solution, interpretation 등)는 **짧게 쓰지 말고** 프롬프트에 적힌 최소 문장 수를 지키세요. JSON만 반환하세요.${truncationNote}\n\n---\n${apiText}\n---`,
       },
     ],
   })
