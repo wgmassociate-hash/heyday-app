@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: heydaystar
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ADSENSE_PUBLISHER_ID
+        sync: false
+      - key: VITE_ADSENSE_CLIENT
+        sync: false
+      - key: VITE_ADSENSE_SLOT_BANNER
+        sync: false
+      - key: VITE_ADSENSE_SLOT_RECTANGLE
+        sync: false
+      - key: VITE_ADSENSE_SLOT_LEADERBOARD
+        sync: false
