@@ -108,7 +108,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-xl mx-auto px-4 py-6 md:py-8">
+      <main className="max-w-2xl mx-auto px-4 py-6 md:py-8">
         <AdSlot variant="banner" className="mb-6" />
 
         <div className={isTransitioning ? 'animate-fade-out' : ''}>
