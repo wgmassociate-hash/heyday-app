@@ -52,7 +52,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     hasApiKey: Boolean(process.env.ANTHROPIC_API_KEY),
-    model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
+    model: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5',
     ocrModel: process.env.ANTHROPIC_OCR_MODEL || 'claude-haiku-4-5',
   })
 })
@@ -61,7 +61,11 @@ app.post('/api/ocr-screenshots', asyncHandler(async (req, res) => {
   const { images } = req.body ?? {}
 
   if (!process.env.ANTHROPIC_API_KEY) {
-    return res.status(503).json({ error: 'API 키가 설정되지 않았습니다.' })
+    return res.status(503).json({
+      error: isProd
+        ? 'API 키가 설정되지 않았습니다. Render → Environment → ANTHROPIC_API_KEY를 추가한 뒤 재배포하세요.'
+        : 'API 키가 설정되지 않았습니다. .env 파일에 ANTHROPIC_API_KEY를 추가하세요.',
+    })
   }
 
   try {
@@ -83,7 +87,9 @@ app.post('/api/analyze', asyncHandler(async (req, res) => {
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(503).json({
-      error: 'API 키가 설정되지 않았습니다. .env 파일에 ANTHROPIC_API_KEY를 추가하세요.',
+      error: isProd
+        ? 'API 키가 설정되지 않았습니다. Render → Environment → ANTHROPIC_API_KEY를 추가한 뒤 재배포하세요.'
+        : 'API 키가 설정되지 않았습니다. .env 파일에 ANTHROPIC_API_KEY를 추가하세요.',
       fallback: true,
     })
   }

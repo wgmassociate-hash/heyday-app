@@ -94,6 +94,7 @@ export default function ResultStep({ result, onReset }) {
     messageCount,
     source,
     conversationMeta,
+    analysisMeta,
   } = result
 
   const badge = RELATION_BADGE[relationType] ?? RELATION_BADGE.ambiguous
@@ -112,6 +113,11 @@ export default function ResultStep({ result, onReset }) {
           심층 분석 완료 ✨ · {messageCount}개 메시지
           {source === 'claude' && <span className="ml-2 text-violet-500 font-medium">· Claude AI</span>}
           {source === 'local' && <span className="ml-2 text-gray-400">· 로컬 분석</span>}
+          {analysisMeta?.truncated && (
+            <span className="ml-2 text-gray-400">
+              · 최근 {analysisMeta.analyzedMessages}개 구간 AI 분석
+            </span>
+          )}
         </p>
         <h2 className="text-2xl md:text-3xl font-bold text-gray-900">{reportTitle}</h2>
       </div>

@@ -65,8 +65,16 @@ export async function ocrScreenshots(files) {
       )
     }
     if (response.status === 502 || response.status === 503 || response.status === 504) {
+      let serverMsg = ''
+      try {
+        const errBody = raw ? JSON.parse(raw) : null
+        serverMsg = errBody?.error || ''
+      } catch {
+        /* ignore */
+      }
+      if (serverMsg) throw new Error(serverMsg)
       throw new Error(
-        'API 서버(localhost:3001)가 꺼져 있거나 응답하지 않습니다. npm run dev 를 실행해 주세요.',
+        'API 서버가 응답하지 않습니다. 배포 환경이면 Render 환경 변수를 확인하고, 로컬이면 npm run dev 를 실행해 주세요.',
       )
     }
     const snippet = raw?.slice(0, 120).replace(/\s+/g, ' ')
