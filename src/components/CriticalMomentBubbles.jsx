@@ -27,55 +27,47 @@ function Bubble({ moment, align }) {
 
   return (
     <div className={`flex ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[88%] md:max-w-[75%] ${align === 'right' ? 'items-end' : 'items-start'} flex flex-col gap-1.5`}>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-gray-600">{moment.speaker}</span>
-          {moment.timestamp && (
-            <span className="text-[10px] text-gray-400">{moment.timestamp}</span>
-          )}
+      <div className={`max-w-[92%] ${align === 'right' ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs font-bold text-gray-600">{moment.speaker}</span>
           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${badge}`}>
             {meta.icon} {meta.label}
           </span>
-          <span className="text-[10px] text-gray-400">임팩트 {moment.impactScore}/10</span>
         </div>
 
-        <div className={`relative px-4 py-3 rounded-2xl border-2 shadow-sm ${style} ${
+        <div className={`px-3 py-2.5 rounded-2xl border-2 ${style} ${
           align === 'right' ? 'rounded-tr-sm' : 'rounded-tl-sm'
         }`}>
-          <p className="text-sm md:text-base text-gray-800 font-medium leading-relaxed">
-            "{moment.quote}"
-          </p>
+          <p className="text-sm text-gray-800 font-medium leading-snug">"{moment.quote}"</p>
         </div>
 
-        <div className="px-1">
-          <p className="text-xs text-gray-600 leading-relaxed">
-            🧠 {moment.psychologicalInsight}
-          </p>
-        </div>
+        {moment.psychologicalInsight && (
+          <p className="text-xs text-gray-500 leading-snug px-1">{moment.psychologicalInsight}</p>
+        )}
       </div>
     </div>
   )
 }
 
-export default function CriticalMomentBubbles({ moments }) {
+export default function CriticalMomentBubbles({ moments, compact = false }) {
   if (!moments?.length) return null
+
+  const list = (
+    <div className="space-y-4">
+      {moments.map((m, i) => (
+        <Bubble key={i} moment={m} align={i % 2 === 0 ? 'left' : 'right'} />
+      ))}
+    </div>
+  )
+
+  if (compact) return list
 
   return (
     <div className="bg-gradient-to-b from-gray-50 to-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-6">
-      <div className="mb-5">
-        <h3 className="font-bold text-gray-800 flex items-center gap-2">
-          <span>💬</span> 소름 돋는 카톡 복기 — Critical Moments
-        </h3>
-        <p className="text-xs text-gray-500 mt-1">
-          관계를 바꾼 결정적 순간, 심리학적 해석과 함께
-        </p>
-      </div>
-
-      <div className="space-y-6">
-        {moments.map((m, i) => (
-          <Bubble key={i} moment={m} align={i % 2 === 0 ? 'left' : 'right'} />
-        ))}
-      </div>
+      <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-4">
+        <span>💬</span> 핵심 카톡 순간
+      </h3>
+      {list}
     </div>
   )
 }

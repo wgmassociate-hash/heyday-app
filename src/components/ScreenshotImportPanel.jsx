@@ -57,48 +57,33 @@ export default function ScreenshotImportPanel({ onTextLoaded }) {
       const { anonymizedText, nameMap } = anonymizeChatText(raw)
 
       if (Object.keys(nameMap).length === 0 && !anonymizedText.includes('나 :')) {
-        setError('발화자 이름을 찾지 못했습니다. 스크린샷이 더 선명한지 확인해 주세요.')
+        setError('이름을 못 찾았어. 더 선명한 캡처로 다시 해봐!')
         return
       }
 
       onTextLoaded(anonymizedText)
-      setDoneMessage('아래 「대화 내용 확인」으로 이동했습니다. 본인=나, 상대=사용자 형식입니다.')
-      document.getElementById('step-review-heading')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setDoneMessage('✅ 아래 입력창에 넣었어!')
+      document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     } catch (err) {
-      setError(err?.message || '텍스트 추출에 실패했습니다.')
+      setError(err?.message || '실패했어. 다시 시도해봐')
     } finally {
       setExtracting(false)
     }
   }
 
   return (
-    <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50/80 to-white p-4 md:p-5">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2">
-            <span>📸</span> 스크린샷으로 불러오기
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">
-              모바일 추천
-            </span>
-          </h3>
-          <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-            카톡 대화 화면을 캡처한 뒤, <strong>위→아래 순서</strong>로 올려주세요. (최대 {MAX_SCREENSHOTS}장)
-          </p>
-          <ol className="mt-2 text-xs text-gray-500 space-y-1 list-decimal pl-4">
-            <li>스크린샷 추가 → 순서 확인</li>
-            <li>추출 및 익명화 → 2단계 입력창에 자동 반영</li>
-          </ol>
-        </div>
-      </div>
+    <div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 mb-4">
+      <p className="text-sm font-bold text-gray-800 mb-1">📸 캡처 올리기</p>
+      <p className="text-xs text-gray-500 mb-3">위→아래 순서 · 최대 {MAX_SCREENSHOTS}장</p>
 
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-3">
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={items.length >= MAX_SCREENSHOTS}
-          className="px-4 py-2 rounded-xl bg-white border border-violet-200 text-sm font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-40 transition-colors"
+          className="px-4 py-2.5 rounded-xl bg-white border border-violet-200 text-sm font-bold text-violet-700 hover:bg-violet-50 disabled:opacity-40"
         >
-          ➕ 스크린샷 추가
+          ➕ 사진 추가
         </button>
         <input
           ref={inputRef}
@@ -116,15 +101,15 @@ export default function ScreenshotImportPanel({ onTextLoaded }) {
             type="button"
             onClick={handleExtract}
             disabled={extracting}
-            className="px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition-colors"
+            className="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 disabled:opacity-50"
           >
-            {extracting ? '추출 · 익명화 중…' : '🔍 추출 및 익명화'}
+            {extracting ? '읽는 중...' : '🔍 글자 뽑기'}
           </button>
         )}
       </div>
 
       {items.length > 0 && (
-        <ul className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-4">
+        <ul className="grid grid-cols-3 gap-2 mb-3">
           {items.map((item, index) => (
             <li
               key={item.id}
@@ -137,68 +122,36 @@ export default function ScreenshotImportPanel({ onTextLoaded }) {
                 setDragIndex(null)
               }}
               onDragEnd={() => setDragIndex(null)}
-              className={`relative rounded-xl border bg-white overflow-hidden shadow-sm ${
+              className={`relative rounded-xl border bg-white overflow-hidden ${
                 dragIndex === index ? 'border-violet-400 ring-2 ring-violet-200' : 'border-gray-200'
               }`}
             >
-              <div className="absolute top-1 left-1 z-10 w-6 h-6 rounded-full bg-violet-600 text-white text-xs font-bold flex items-center justify-center shadow">
+              <div className="absolute top-1 left-1 z-10 w-5 h-5 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center">
                 {index + 1}
               </div>
               <img
                 src={item.previewUrl}
-                alt={`스크린샷 ${index + 1}`}
+                alt={`캡처 ${index + 1}`}
                 className="w-full aspect-[9/16] object-cover object-top"
               />
-              <div className="flex border-t border-gray-100">
-                <button
-                  type="button"
-                  aria-label="위로"
-                  disabled={index === 0}
-                  onClick={() => setItems((prev) => moveItem(prev, index, index - 1))}
-                  className="flex-1 py-1 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-30"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  aria-label="아래로"
-                  disabled={index === items.length - 1}
-                  onClick={() => setItems((prev) => moveItem(prev, index, index + 1))}
-                  className="flex-1 py-1 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-30"
-                >
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  aria-label="삭제"
-                  onClick={() => removeItem(item.id)}
-                  className="flex-1 py-1 text-xs text-red-500 hover:bg-red-50"
-                >
-                  ✕
-                </button>
-              </div>
+              <button
+                type="button"
+                aria-label="삭제"
+                onClick={() => removeItem(item.id)}
+                className="w-full py-1 text-xs text-red-500 hover:bg-red-50 border-t border-gray-100"
+              >
+                ✕
+              </button>
             </li>
           ))}
         </ul>
       )}
 
       {extracting && (
-        <p className="text-sm text-violet-600 animate-pulse-soft mb-3">
-          AI가 대화를 읽는 중… 본인=「나」, 상대=「사용자」로 정리합니다 (10~30초)
-        </p>
+        <p className="text-sm text-violet-600 animate-pulse-soft mb-2">AI가 읽는 중... 20초쯤 걸려</p>
       )}
-
-      {doneMessage && (
-        <p className="text-sm text-emerald-600 font-medium mb-3">{doneMessage}</p>
-      )}
-
-      {error && (
-        <p className="text-sm text-red-600 mb-3">{error}</p>
-      )}
-
-      <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
-        이미지는 텍스트 추출 후 서버에 저장하지 않습니다.
-      </p>
+      {doneMessage && <p className="text-sm text-emerald-600 font-bold mb-2">{doneMessage}</p>}
+      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
     </div>
   )
 }

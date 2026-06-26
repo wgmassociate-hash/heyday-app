@@ -13,10 +13,10 @@ const STEPS = {
 }
 
 function phaseForProgress(progress) {
-  if (progress >= 85) return '리포트 생성 중...'
-  if (progress >= 55) return '관계 역학 · 핵심 순간 분석 중...'
-  if (progress >= 30) return '호감도 · 밀당 패턴 AI 해석 중...'
-  return 'AI 심층 분석 시작...'
+  if (progress >= 85) return '거의 다 됐어!'
+  if (progress >= 55) return '핵심 순간 찾는 중...'
+  if (progress >= 30) return '호감도 계산 중...'
+  return 'AI 분석 시작!'
 }
 
 export default function App() {
@@ -47,7 +47,7 @@ export default function App() {
     setLoadingState({
       preview,
       progress: 22,
-      phase: '패턴 분석 완료 · AI 심층 분석 시작...',
+      phase: '패턴 분석 OK · AI 분석 중...',
     })
     transitionTo(STEPS.LOADING)
 
@@ -87,12 +87,12 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-brand-50 via-white to-violet-50/30">
-      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div className="min-h-screen bg-gradient-to-b from-pink-50 via-white to-violet-50/40">
+      <header className="sticky top-0 z-10 bg-white/90 backdrop-blur-md border-b border-pink-100/80">
+        <div className="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-xl">💬</span>
-            <span className="font-bold text-gray-800 text-sm md:text-base">
+            <span className="text-xl">💕</span>
+            <span className="font-black text-gray-800 text-base">
               heydaystar
             </span>
           </div>
@@ -100,16 +100,16 @@ export default function App() {
             <button
               type="button"
               onClick={handleReset}
-              className="text-sm text-brand-600 hover:text-brand-700 font-medium"
+              className="text-sm text-brand-600 hover:text-brand-700 font-bold"
             >
-              새 분석
+              ↩ 다시
             </button>
           )}
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-6 md:py-10">
-        <AdSlot variant="banner" className="mb-8" />
+      <main className="max-w-xl mx-auto px-4 py-6 md:py-8">
+        <AdSlot variant="banner" className="mb-6" />
 
         <div className={isTransitioning ? 'animate-fade-out' : ''}>
           {step === STEPS.INPUT && (

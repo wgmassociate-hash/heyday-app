@@ -1,12 +1,12 @@
 const TREND_ICON = { up: '↑', down: '↓', stable: '→' }
 const TREND_COLOR = { up: 'text-emerald-500', down: 'text-rose-400', stable: 'text-gray-400' }
 
-export default function AffectionTrendChart({ timeline, scoreLabel = '호감도' }) {
+export default function AffectionTrendChart({ timeline, scoreLabel = '호감도', compact = false }) {
   if (!timeline?.length) return null
 
   const W = 320
-  const H = 140
-  const pad = { t: 20, r: 16, b: 28, l: 32 }
+  const H = 120
+  const pad = { t: 16, r: 12, b: 24, l: 28 }
   const innerW = W - pad.l - pad.r
   const innerH = H - pad.t - pad.b
 
@@ -23,63 +23,55 @@ export default function AffectionTrendChart({ timeline, scoreLabel = '호감도'
   const last = timeline[timeline.length - 1].score
   const delta = last - first
 
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-6">
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <h3 className="font-bold text-gray-800 flex items-center gap-2">
-            <span>📈</span> {scoreLabel} 추이 — 과거 vs 현재
-          </h3>
-          <p className="text-xs text-gray-500 mt-1">대화 타임라인별 관계 온도 변화</p>
-        </div>
-        <div className={`text-right ${delta >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-          <p className="text-lg font-black">{delta >= 0 ? '+' : ''}{delta}</p>
-          <p className="text-[10px] font-medium uppercase tracking-wide">vs 초반</p>
-        </div>
+  const chart = (
+    <>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs text-gray-500">{scoreLabel} 흐름</p>
+        <p className={`text-sm font-black ${delta >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+          {delta >= 0 ? '+' : ''}{delta} vs 처음
+        </p>
       </div>
 
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-h-[160px]" aria-hidden="true">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-h-[140px]" aria-hidden="true">
         <defs>
           <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#ec4899" stopOpacity="0.35" />
             <stop offset="100%" stopColor="#ec4899" stopOpacity="0.02" />
           </linearGradient>
         </defs>
-        {[0, 25, 50, 75, 100].map((v) => {
+        {[0, 50, 100].map((v) => {
           const y = pad.t + innerH - (v / 100) * innerH
           return (
-            <g key={v}>
-              <line x1={pad.l} y1={y} x2={W - pad.r} y2={y} stroke="#f3f4f6" strokeWidth="1" />
-              <text x={pad.l - 6} y={y + 3} textAnchor="end" fontSize="8" fill="#9ca3af">{v}</text>
-            </g>
+            <line key={v} x1={pad.l} y1={y} x2={W - pad.r} y2={y} stroke="#f3f4f6" strokeWidth="1" />
           )
         })}
         <path d={areaPath} fill="url(#trendGrad)" />
-        <path d={linePath} fill="none" stroke="#ec4899" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={linePath} fill="none" stroke="#ec4899" strokeWidth="2.5" strokeLinecap="round" />
         {points.map((p, i) => (
-          <g key={i}>
-            <circle cx={p.x} cy={p.y} r="5" fill="white" stroke="#ec4899" strokeWidth="2" />
-            <circle cx={p.x} cy={p.y} r="2.5" fill="#ec4899" />
-          </g>
+          <circle key={i} cx={p.x} cy={p.y} r="4" fill="#ec4899" stroke="white" strokeWidth="2" />
         ))}
       </svg>
 
-      <div className="flex gap-1 mt-3 overflow-x-auto pb-1">
+      <div className="flex gap-2 mt-2 overflow-x-auto">
         {timeline.map((t, i) => (
-          <div key={i} className="flex-shrink-0 min-w-[72px] text-center">
+          <div key={i} className="flex-shrink-0 text-center min-w-[56px]">
             <p className={`text-xs font-bold ${TREND_COLOR[t.trend]}`}>
               {TREND_ICON[t.trend]} {t.score}
             </p>
-            <p className="text-[10px] text-gray-500 truncate">{t.period}</p>
           </div>
         ))}
       </div>
+    </>
+  )
 
-      {timeline[timeline.length - 1]?.insight && (
-        <p className="mt-3 text-xs text-gray-600 bg-brand-50 rounded-lg px-3 py-2 border border-brand-100">
-          💡 {timeline[timeline.length - 1].insight}
-        </p>
-      )}
+  if (compact) return chart
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 md:p-6">
+      <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-4">
+        <span>📈</span> {scoreLabel} 변화
+      </h3>
+      {chart}
     </div>
   )
 }

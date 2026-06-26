@@ -1,6 +1,13 @@
 export default function SeoContent() {
   return (
-    <article className="mt-20 max-w-3xl mx-auto">
+    <details className="mt-12 max-w-xl mx-auto group">
+      <summary className="cursor-pointer list-none text-center text-sm font-semibold text-gray-400 hover:text-brand-500 transition-colors">
+        <span className="inline-flex items-center gap-1 px-4 py-2 rounded-full bg-gray-50 border border-gray-100">
+          📖 더 알아보기
+          <span className="text-xs group-open:rotate-180 transition-transform inline-block">▼</span>
+        </span>
+      </summary>
+    <article className="mt-6 max-w-3xl mx-auto">
       <header className="mb-10 text-center md:text-left">
         <p className="text-brand-500 font-semibold text-sm uppercase tracking-widest mb-2">
           Relationship Psychology
@@ -145,5 +152,6 @@ export default function SeoContent() {
         <p className="mt-1">www.heydaystar.co.kr</p>
       </footer>
     </article>
+    </details>
   )
 }

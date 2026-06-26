@@ -36,22 +36,17 @@ export default function SelfSpeakerPick({ chatText, onAssign }) {
   }
 
   return (
-    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 relative z-10">
-      <p className="text-xs font-semibold text-amber-900 mb-1">
-        {isRealNames
-          ? 'txt·PC 붙여넣기에는 본인 카톡 이름이 그대로 나옵니다.'
-          : '본인 메시지가 「나」로 표시되지 않았어요.'}
-      </p>
-      <p className="text-xs text-amber-800 mb-2">아래에서 본인을 선택해 주세요.</p>
+    <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+      <p className="text-sm font-bold text-amber-900 mb-2">👆 이 중에 너는?</p>
       <div className="flex flex-wrap gap-2">
         {candidates.map((label) => (
           <button
             key={label}
             type="button"
             onClick={() => handlePick(label)}
-            className="px-3 py-1.5 rounded-lg bg-white border border-amber-300 text-xs font-semibold text-amber-800 hover:bg-amber-100 transition-colors cursor-pointer"
+            className="px-4 py-2 rounded-xl bg-white border-2 border-amber-300 text-sm font-bold text-amber-800 hover:bg-amber-100 active:scale-95 transition-transform"
           >
-            {label} → 나
+            {label}
           </button>
         ))}
       </div>
