@@ -62,8 +62,8 @@ export default function ScreenshotImportPanel({ onTextLoaded }) {
       }
 
       onTextLoaded(anonymizedText)
-      setDoneMessage('✅ 아래 입력창에 넣었어!')
-      document.getElementById('chat-input')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setDoneMessage('✅ 대화 읽기 완료! 아래에서 확인하고 분석 버튼을 눌러줘')
+      document.getElementById('chat-input-review')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     } catch (err) {
       setError(err?.message || '실패했어. 다시 시도해봐')
     } finally {
@@ -72,86 +72,98 @@ export default function ScreenshotImportPanel({ onTextLoaded }) {
   }
 
   return (
-    <div className="rounded-2xl border border-violet-100 bg-violet-50/50 p-4 mb-4">
-      <p className="text-sm font-bold text-gray-800 mb-1">📸 캡처 올리기</p>
-      <p className="text-xs text-gray-500 mb-3">위→아래 순서 · 최대 {MAX_SCREENSHOTS}장</p>
-
-      <div className="flex flex-wrap gap-2 mb-3">
+    <div className="rounded-2xl border-2 border-dashed border-violet-200 bg-violet-50/40 p-4">
+      {items.length === 0 ? (
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          disabled={items.length >= MAX_SCREENSHOTS}
-          className="px-4 py-2.5 rounded-xl bg-white border border-violet-200 text-sm font-bold text-violet-700 hover:bg-violet-50 disabled:opacity-40"
+          className="w-full py-8 px-4 rounded-xl bg-white border-2 border-violet-200 hover:border-violet-400 hover:bg-violet-50/50 active:scale-[0.99] transition-all"
         >
-          ➕ 사진 추가
+          <p className="text-3xl mb-2" aria-hidden="true">📷</p>
+          <p className="text-base font-black text-violet-800 mb-1">여기 눌러서 캡처 선택</p>
+          <p className="text-xs text-gray-500">갤러리에서 카톡 스크린샷 · 최대 {MAX_SCREENSHOTS}장</p>
         </button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            addFiles(e.target.files)
-            e.target.value = ''
-          }}
-        />
-        {items.length > 0 && (
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <p className="text-sm font-bold text-gray-800">
+              📸 캡처 {items.length}/{MAX_SCREENSHOTS}장
+            </p>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={items.length >= MAX_SCREENSHOTS}
+              className="px-3 py-1.5 rounded-lg bg-white border border-violet-200 text-xs font-bold text-violet-700 hover:bg-violet-50 disabled:opacity-40"
+            >
+              ➕ 추가
+            </button>
+          </div>
+
+          <ul className="grid grid-cols-3 gap-2 mb-3">
+            {items.map((item, index) => (
+              <li
+                key={item.id}
+                draggable
+                onDragStart={() => setDragIndex(index)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => {
+                  if (dragIndex == null) return
+                  setItems((prev) => moveItem(prev, dragIndex, index))
+                  setDragIndex(null)
+                }}
+                onDragEnd={() => setDragIndex(null)}
+                className={`relative rounded-xl border bg-white overflow-hidden ${
+                  dragIndex === index ? 'border-violet-400 ring-2 ring-violet-200' : 'border-gray-200'
+                }`}
+              >
+                <div className="absolute top-1 left-1 z-10 w-5 h-5 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center">
+                  {index + 1}
+                </div>
+                <img
+                  src={item.previewUrl}
+                  alt={`캡처 ${index + 1}`}
+                  className="w-full aspect-[9/16] object-cover object-top"
+                />
+                <button
+                  type="button"
+                  aria-label="삭제"
+                  onClick={() => removeItem(item.id)}
+                  className="w-full py-1 text-xs text-red-500 hover:bg-red-50 border-t border-gray-100"
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+
           <button
             type="button"
             onClick={handleExtract}
             disabled={extracting}
-            className="px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 disabled:opacity-50"
+            className="w-full py-3.5 rounded-xl bg-violet-600 text-white text-base font-black hover:bg-violet-700 disabled:opacity-50 active:scale-[0.98] shadow-md shadow-violet-200/80"
           >
-            {extracting ? '읽는 중...' : '🔍 글자 뽑기'}
+            {extracting ? '⏳ AI가 글자 읽는 중...' : '③ 글자 뽑기 → 대화 확인'}
           </button>
-        )}
-      </div>
-
-      {items.length > 0 && (
-        <ul className="grid grid-cols-3 gap-2 mb-3">
-          {items.map((item, index) => (
-            <li
-              key={item.id}
-              draggable
-              onDragStart={() => setDragIndex(index)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => {
-                if (dragIndex == null) return
-                setItems((prev) => moveItem(prev, dragIndex, index))
-                setDragIndex(null)
-              }}
-              onDragEnd={() => setDragIndex(null)}
-              className={`relative rounded-xl border bg-white overflow-hidden ${
-                dragIndex === index ? 'border-violet-400 ring-2 ring-violet-200' : 'border-gray-200'
-              }`}
-            >
-              <div className="absolute top-1 left-1 z-10 w-5 h-5 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center">
-                {index + 1}
-              </div>
-              <img
-                src={item.previewUrl}
-                alt={`캡처 ${index + 1}`}
-                className="w-full aspect-[9/16] object-cover object-top"
-              />
-              <button
-                type="button"
-                aria-label="삭제"
-                onClick={() => removeItem(item.id)}
-                className="w-full py-1 text-xs text-red-500 hover:bg-red-50 border-t border-gray-100"
-              >
-                ✕
-              </button>
-            </li>
-          ))}
-        </ul>
+        </>
       )}
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          addFiles(e.target.files)
+          e.target.value = ''
+        }}
+      />
 
       {extracting && (
-        <p className="text-sm text-violet-600 animate-pulse-soft mb-2">AI가 읽는 중... 20초쯤 걸려</p>
+        <p className="text-sm text-violet-600 animate-pulse-soft mt-3 text-center">20초쯤 걸려, 잠깐만!</p>
       )}
-      {doneMessage && <p className="text-sm text-emerald-600 font-bold mb-2">{doneMessage}</p>}
-      {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+      {doneMessage && <p className="text-sm text-emerald-600 font-bold mt-3 text-center">{doneMessage}</p>}
+      {error && <p className="text-sm text-red-600 mt-3 text-center">{error}</p>}
     </div>
   )
 }
