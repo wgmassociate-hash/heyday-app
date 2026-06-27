@@ -13,10 +13,12 @@ const STEPS = {
 }
 
 function phaseForProgress(progress) {
-  if (progress >= 85) return '거의 다 됐어!'
-  if (progress >= 55) return '핵심 순간 찾는 중...'
-  if (progress >= 30) return '호감도 계산 중...'
-  return 'AI 분석 시작!'
+  if (progress >= 88) return '🎉 거의 다 됐어 진짜!!'
+  if (progress >= 68) return '✍️ 리포트 쓰는 중…'
+  if (progress >= 52) return '💘 썸 신호 찾는 중…'
+  if (progress >= 35) return '⏱️ 답장 속도 재는 중…'
+  if (progress >= 18) return '😂 ㅋㅋㅋ 세는 중…'
+  return '📖 대화 읽는 중…'
 }
 
 export default function App() {
