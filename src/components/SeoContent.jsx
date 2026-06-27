@@ -149,7 +149,7 @@ export default function SeoContent() {
 
       <footer className="mt-12 pt-8 border-t border-gray-200 text-center text-sm text-gray-400">
         <p>© {new Date().getFullYear()} heydaystar · 카톡 밀당 감정 분석기</p>
-        <p className="mt-1">www.heydaystar.co.kr</p>
+        <p className="mt-1">app.heydaystar.co.kr</p>
       </footer>
     </article>
     </details>
