@@ -106,3 +106,46 @@ WP **새 글** → 본문 복사 → **제목·카테고리·대표 이미지** 
 - [ ] 첫 글 2편 발행
 - [ ] 글 하단 앱 CTA 배너
 - [ ] app 사이트 SeoContent 「더 알아보기」는 블로그 링크 추가 (선택)
+
+---
+
+## 10. Google Search Console
+
+### 글을 전부 지운 뒤 순서
+
+1. **휴지통 비우기** — 글 → 휴지통 → **비우기** (예전 URL이 색인에 남지 않게)
+2. **고정 페이지** `소개`, `개인정보·면책` 발행 (5번 섹션)
+3. **글 2편 이상** 재발행 (7번 — 레포 `blog/posts/` 복사)
+4. 그다음 Search Console 등록·사이트맵 제출
+
+> 빈 블로그만 등록하면 색인할 페이지가 없어서 GSC 데이터가 거의 안 쌓입니다.
+
+### 속성 추가 (권장: URL 접두어 2개)
+
+| 속성 | URL | 인증 |
+|------|-----|------|
+| 블로그 | `https://www.heydaystar.co.kr` | HTML 태그 또는 **Site Kit** 플러그인 |
+| 앱 | `https://app.heydaystar.co.kr` | HTML 태그 (Render 배포 후 `index.html` head) |
+
+도메인 전체(`heydaystar.co.kr`) 한 번에 쓰려면 **DNS TXT** — 까페24 DNS에서 `google-site-verification=...` 추가.
+
+### 사이트맵 제출
+
+| 사이트 | 사이트맵 URL |
+|--------|----------------|
+| 블로그 (WP 기본) | `https://www.heydaystar.co.kr/wp-sitemap.xml` |
+| 앱 | `https://app.heydaystar.co.kr/sitemap.xml` |
+
+GSC → **색인 생성 → Sitemaps** → 위 URL 입력 → 제출.
+
+### WP에서 Site Kit (가장 쉬움)
+
+1. 플러그인 → **Site Kit by Google** 설치·활성화
+2. Google 계정 연결 → Search Console + Analytics 한 번에 연동
+3. 사이트맵은 Site Kit이 `wp-sitemap.xml` 자동 인식
+
+### 등록 후 확인
+
+- **URL 검사** → `https://www.heydaystar.co.kr/` 및 대표 글 1개 → **색인 생성 요청**
+- **페이지** → 며칠 뒤 색인·노출 수 확인
+- 앱은 홈(`/`) 1페이지만 색인하면 충분 (도구형 SPA)
