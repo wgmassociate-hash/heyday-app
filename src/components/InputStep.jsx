@@ -82,6 +82,16 @@ export default function InputStep({ chatText, onChange, onSubmit, isValid }) {
         {canAnalyze && (
           <p className="text-center text-xs text-gray-400 mt-2">보통 20초면 끝!</p>
         )}
+        <p className="text-center text-xs text-gray-500 mt-4">
+          <a
+            href="https://www.heydaystar.co.kr"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline decoration-gray-300 hover:text-brand-600"
+          >
+            연애·심리 글 읽기 → heydaystar 블로그
+          </a>
+        </p>
       </div>
 
       <SeoContent />
