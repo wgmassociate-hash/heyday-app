@@ -1,23 +1,55 @@
 export const SELF_SPEAKER_LABEL = '나'
 
 /** 1:1 상대방 단일 라벨 */
-export const OTHER_SINGLE_LABEL = '사용자'
+export const OTHER_SINGLE_LABEL = '상대방'
 
-/** OCR·카톡 본인 — 반드시 「나」로만 표기 (「사용자」는 상대 전용) */
+/** OCR·카톡 본인 — 반드시 「나」로만 표기 (「상대방」은 상대 전용) */
 export const SELF_SPEAKER_ALIASES = new Set(['나', '내', '본인', 'Me', 'me'])
 
-export const OTHER_PSEUDO_SPEAKERS = new Set(['상대', '상대방'])
+export const OTHER_PSEUDO_SPEAKERS = new Set(['상대', '상대방', '타인'])
+
+const LEGACY_OTHER_LABEL = '사용자'
+const LEGACY_OTHER_PATTERN = /^사용자([A-Z])?$/
+const LEGACY_PERSON_PATTERN = /^인물([A-Z])$/
 
 /** @param {number} index 0-based @param {number} totalOthers */
 export function anonymousSpeakerLabel(index, totalOthers = 1) {
   if (totalOthers === 1) return OTHER_SINGLE_LABEL
-  return `사용자${String.fromCharCode(65 + index)}`
+  return `상대방${String.fromCharCode(65 + index)}`
+}
+
+export function isLegacyOtherLabel(name) {
+  const n = String(name || '').trim()
+  if (n === LEGACY_OTHER_LABEL) return true
+  return LEGACY_OTHER_PATTERN.test(n) || LEGACY_PERSON_PATTERN.test(n)
 }
 
 export function isAnonymizedOtherLabel(name) {
   const n = String(name || '').trim()
   if (n === OTHER_SINGLE_LABEL) return true
-  return /^사용자[A-Z]$/.test(n)
+  if (/^상대방[A-Z]$/.test(n)) return true
+  return isLegacyOtherLabel(n)
+}
+
+/** @param {string} label */
+export function normalizeSpeakerDisplayLabel(label) {
+  const n = String(label || '').trim()
+  if (!n) return n
+  if (n === LEGACY_OTHER_LABEL || n === '상대') return OTHER_SINGLE_LABEL
+  const legacyUser = n.match(/^사용자([A-Z])$/)
+  if (legacyUser) return `상대방${legacyUser[1]}`
+  const legacyPerson = n.match(/^인물([A-Z])$/)
+  if (legacyPerson) return `상대방${legacyPerson[1]}`
+  return n
+}
+
+/** AI 리포트 등에 남은 구 라벨을 상대방으로 통일 */
+export function normalizeReportCopy(text) {
+  if (typeof text !== 'string' || !text) return text
+  return text
+    .replace(/사용자([A-Z])/g, '상대방$1')
+    .replace(/인물([A-Z])/g, '상대방$1')
+    .replace(/(?<![가-힣A-Z])사용자(?=[가는을를와과이]|[^A-Za-z]|$)/g, '상대방')
 }
 
 export function isSelfSpeaker(name) {
@@ -35,16 +67,25 @@ export function isPseudoSpeaker(name) {
   return isSelfSpeaker(name) || isOtherPseudoSpeaker(name)
 }
 
-export function isAlreadyAnonymized(text) {
+function hasAnonymizedOtherInText(text) {
   const t = text || ''
-  const hasSelf = textHasSelfSpeaker(t)
-  const hasOther =
+  return (
+    /(?:^|\n)상대방(?:[A-Z])?\s*[:：]/m.test(t) ||
+    /,\s*상대방(?:[A-Z])?\s*[:：]/.test(t) ||
+    /\[(상대방(?:[A-Z])?)\]\s+\[(?:오전|오후)/.test(t) ||
     /(?:^|\n)사용자(?:[A-Z])?\s*[:：]/m.test(t) ||
     /,\s*사용자(?:[A-Z])?\s*[:：]/.test(t) ||
     /\[(사용자(?:[A-Z])?)\]\s+\[(?:오전|오후)/.test(t)
+  )
+}
+
+export function isAlreadyAnonymized(text) {
+  const t = text || ''
+  const hasSelf = textHasSelfSpeaker(t)
+  const hasOther = hasAnonymizedOtherInText(t)
   if (hasSelf && hasOther) return true
   if (hasOther && !hasRawSpeakerNames(t)) return true
-  if (/(?:^|\n)\[사용자[A-Z]?\]\s*[:：]/.test(t)) return true
+  if (/(?:^|\n)\[(?:상대방|사용자)[A-Z]?\]\s*[:：]/.test(t)) return true
   return false
 }
 
@@ -52,16 +93,14 @@ function hasRawSpeakerNames(text) {
   return extractRawColonSpeakers(text).some((s) => !isSelfSpeaker(s) && !isAnonymizedOtherLabel(s) && !isOtherPseudoSpeaker(s))
 }
 
-/** 한 줄에서 발화자 이름 추출 (PC 드래그·카톡 txt·[이름] [오후 10:21] 형식) */
+/** 한 줄에서 발화者 이름 추출 (PC 드래그·카톡 txt·[이름] [오후 10:21] 형식) */
 function extractSpeakerNameFromLine(line) {
   const trimmed = String(line || '').trim()
   if (!trimmed) return null
 
-  // 카톡 [이름] [오후 10:21] 메시지 (또는 헤더만)
   const bracket = trimmed.match(/^\[(.+?)\]\s+\[(?:오전|오후)\s+\d{1,2}:\d{2}\]/)
   if (bracket) return bracket[1].trim()
 
-  // 카톡 [이름] 2024년 ... (일부 내보내기)
   const bracketDate = trimmed.match(/^\[(.+?)\]\s+\d{4}년/)
   if (bracketDate) return bracketDate[1].trim()
 
@@ -70,7 +109,6 @@ function extractSpeakerNameFromLine(line) {
   )
   if (kakaoExport) return kakaoExport[1].trim()
 
-  // PC 드래그: "민수 : 메시지" ([ 로 시작하는 줄은 제외)
   if (!trimmed.startsWith('[')) {
     const plain = trimmed.match(/^(.{1,30}?)\s*[:：]\s*.+/)
     if (plain && !/^\d{4}/.test(plain[1].trim())) return plain[1].trim()
@@ -144,11 +182,8 @@ export function applySpeakerAnonymization(text, nameMap) {
         const target = nameMap[name]
         if (!target || target === name) continue
         const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        // 카톡 [이름] [오후 10:21] 형식
         out = out.replace(new RegExp(`^\\[${escaped}\\]`), `[${target}]`)
-        // PC 드래그: "민수 : 메시지"
         out = out.replace(new RegExp(`^${escaped}\\s*([:：])`), `${target} $1`)
-        // 카톡 txt 내보내기: "2024년 ..., 민수 : 메시지"
         out = out.replace(new RegExp(`,\\s*${escaped}\\s*([:：])`), `, ${target} $1`)
       }
       return out
@@ -156,7 +191,7 @@ export function applySpeakerAnonymization(text, nameMap) {
     .join('\n')
 }
 
-/** OCR 직후: 「나」가 없고 1:1이면 상대만 사용자로, 본인 라벨 복구 시도 */
+/** OCR 직후: 「나」가 없고 1:1이면 상대만 상대방으로, 본인 라벨 복구 시도 */
 export function preprocessOcrSpeakers(text) {
   let out = text || ''
   const speakers = extractRawColonSpeakers(out)
@@ -165,14 +200,13 @@ export function preprocessOcrSpeakers(text) {
 
   const nonSelf = speakers.filter((s) => !isSelfSpeaker(s) && !isOtherPseudoSpeaker(s))
   if (nonSelf.length === 1 && speakers.includes('나') === false) {
-    // 상대 + 실명 1명 등 — 상대 라인은 그대로 두고 실명만 유지
     return out
   }
 
   return out
 }
 
-/** 특정 발화자 라벨을 「나」로 바꾸고 1:1이면 나머지는 「사용자」 */
+/** 특정 발화자 라벨을 「나」로 바꾸고 1:1이면 나머지는 「상대방」 */
 export function assignSelfSpeaker(text, speakerToBeSelf) {
   const from = String(speakerToBeSelf || '').trim()
   if (!from || from === SELF_SPEAKER_LABEL) return text
@@ -193,9 +227,12 @@ export function assignSelfSpeaker(text, speakerToBeSelf) {
 }
 
 export function normalizeLegacyAnonLabels(text) {
-  return (text || '')
-    .replace(/\[사용자([A-Z]?)\]/g, (_, l) => (l ? `사용자${l}` : '사용자'))
-    .replace(/\[인물([A-Z]?)\]/g, (_, l) => (l ? `사용자${l}` : '사용자'))
+  let out = text || ''
+  out = out.replace(/\[사용자([A-Z]?)\]/g, (_, l) => (l ? `상대방${l}` : '상대방'))
+  out = out.replace(/\[인물([A-Z]?)\]/g, (_, l) => (l ? `상대방${l}` : '상대방'))
+  out = out.replace(/(^|\n)사용자([A-Z]?)\s*([:：])/g, (_, pre, l, colon) => `${pre}상대방${l || ''} ${colon}`)
+  out = out.replace(/,\s*사용자([A-Z]?)\s*([:：])/g, (_, l, colon) => `, 상대방${l || ''} ${colon}`)
+  return out
 }
 
 export function textHasSelfSpeaker(text) {
@@ -223,7 +260,7 @@ export function getSelfPickCandidatesForImport(text) {
   return candidates
 }
 
-/** 익명화됐지만 「나」 없음 → 본인 선택 (사용자A 등) */
+/** 익명화됐지만 「나」 없음 → 본인 선택 (상대방A 등) */
 export function getSelfPickCandidates(text) {
   if (textHasSelfSpeaker(text)) return []
   return extractRawColonSpeakers(text).filter(

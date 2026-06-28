@@ -3,6 +3,7 @@ import {
   normalizeTimeline,
   normalizeCriticalMoments,
 } from './normalizeAnalysis.js'
+import { normalizeReportCopy, normalizeSpeakerDisplayLabel } from '../src/utils/speakerLabels.js'
 
 export const RELATION_LABELS = {
   romantic: {
@@ -48,6 +49,11 @@ export function enrichResult(raw, messageCount) {
   const labels = RELATION_LABELS[type]
   const totalScore = Math.min(100, Math.max(0, Number(raw.totalScore) || 0))
 
+  const deepMetrics = normalizeDeepAnalysis(raw)
+  deepMetrics.textMirroring.interpretation = normalizeReportCopy(deepMetrics.textMirroring.interpretation)
+  deepMetrics.textMirroring.evidence = deepMetrics.textMirroring.evidence.map((e) => normalizeReportCopy(e))
+  deepMetrics.replySpeedAsymmetry.interpretation = normalizeReportCopy(deepMetrics.replySpeedAsymmetry.interpretation)
+
   return {
     totalScore,
     relationType: type,
@@ -55,21 +61,25 @@ export function enrichResult(raw, messageCount) {
     scoreLabel: labels.scoreLabel,
     reportTitle: labels.reportTitle,
     solutionTitle: labels.solutionTitle,
-    dominance: raw.dominance || '주도권 분석 불가',
+    dominance: normalizeReportCopy(raw.dominance || '주도권 분석 불가'),
     dominanceDetail: {
       personA: raw.dominanceDetail?.personA ?? 50,
       personB: raw.dominanceDetail?.personB ?? 50,
-      personALabel: raw.dominanceDetail?.personALabel ?? '사용자A',
-      personBLabel: raw.dominanceDetail?.personBLabel ?? '사용자B',
+      personALabel: normalizeSpeakerDisplayLabel(raw.dominanceDetail?.personALabel ?? '상대방A'),
+      personBLabel: normalizeSpeakerDisplayLabel(raw.dominanceDetail?.personBLabel ?? '상대방'),
     },
     detectedTopics: Array.isArray(raw.detectedTopics) ? raw.detectedTopics : [],
-    psychologySummary: raw.psychologySummary || raw.aiSummary || '',
-    aiSummary: raw.aiSummary || '분석 요약을 생성하지 못했습니다.',
-    solution: raw.solution || '',
+    psychologySummary: normalizeReportCopy(raw.psychologySummary || raw.aiSummary || ''),
+    aiSummary: normalizeReportCopy(raw.aiSummary || '분석 요약을 생성하지 못했습니다.'),
+    solution: normalizeReportCopy(raw.solution || ''),
     metrics: raw.metrics ?? {},
-    deepMetrics: normalizeDeepAnalysis(raw),
+    deepMetrics,
     affectionTimeline: normalizeTimeline(raw.affectionTimeline),
-    criticalMoments: normalizeCriticalMoments(raw.criticalMoments),
+    criticalMoments: normalizeCriticalMoments(raw.criticalMoments).map((m) => ({
+      ...m,
+      quote: normalizeReportCopy(m.quote),
+      psychologicalInsight: normalizeReportCopy(m.psychologicalInsight),
+    })),
     conversationMeta: raw.conversationMeta ?? null,
     messageCount,
     source: 'claude',

@@ -10,7 +10,7 @@ export default function PrivacyBadge() {
           <strong>대화 내용은 서버에 저장하지 않아.</strong> 분석이 끝나면 브라우저에서만 처리돼.
         </li>
         <li>
-          <strong>이름은 자동으로 가려져.</strong> 상대는 「사용자A」처럼 익명으로만 분석돼.
+          <strong>이름은 자동으로 가려져.</strong> 상대는 「상대방」 또는 「상대방A」처럼 익명으로만 분석돼.
         </li>
       </ul>
     </div>

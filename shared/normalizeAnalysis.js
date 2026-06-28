@@ -1,6 +1,8 @@
 /** @typedef {'romantic'|'friendship'|'work'|'family'|'ambiguous'} RelationType */
 /** @typedef {'approach'|'tension'|'warmth'|'distance'|'confession'|'humor'|'turning_point'} MomentType */
 
+import { normalizeSpeakerDisplayLabel } from '../src/utils/speakerLabels.js'
+
 /**
  * @typedef {object} AnalysisResult
  * @property {number} totalScore
@@ -33,8 +35,8 @@ export const DEFAULT_DEEP_METRICS = {
   replySpeedAsymmetry: {
     asymmetryScore: 50,
     label: '답장 속도 비대칭성',
-    fasterSide: '인물A',
-    slowerSide: '인물B',
+    fasterSide: '상대방',
+    slowerSide: '나',
     gapRatio: '1:1',
     interpretation: '누가 더 빠르게 답장하는지의 격차입니다.',
   },
@@ -67,8 +69,8 @@ export function normalizeDeepAnalysis(raw) {
     replySpeedAsymmetry: {
       asymmetryScore: clamp(Number(rsa.asymmetryScore) || 50, 0, 100),
       label: rsa.label || '답장 속도 비대칭성',
-      fasterSide: rsa.fasterSide || '인물A',
-      slowerSide: rsa.slowerSide || '인물B',
+      fasterSide: normalizeSpeakerDisplayLabel(rsa.fasterSide || '상대방'),
+      slowerSide: normalizeSpeakerDisplayLabel(rsa.slowerSide || '나'),
       gapRatio: rsa.gapRatio || '1:1',
       avgReplyLabel: rsa.avgReplyLabel || '',
       interpretation: rsa.interpretation || DEFAULT_DEEP_METRICS.replySpeedAsymmetry.interpretation,
@@ -104,7 +106,7 @@ export function normalizeCriticalMoments(moments) {
   if (!Array.isArray(moments)) return []
 
   return moments.slice(0, 6).map((m) => ({
-    speaker: m.speaker || '인물A',
+    speaker: normalizeSpeakerDisplayLabel(m.speaker || '상대방'),
     quote: m.quote || '',
     timestamp: m.timestamp || '',
     momentType: MOMENT_TYPE_LABELS[m.momentType] ? m.momentType : 'warmth',

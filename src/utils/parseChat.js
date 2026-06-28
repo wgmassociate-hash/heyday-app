@@ -89,12 +89,12 @@ const LINE_PATTERNS = [
   },
   {
     platform: 'generic',
-    regex: /^(나|사용자(?:[A-Z])?)\s*[:：]\s*(.*)$/,
+    regex: /^(나|상대방(?:[A-Z])?|사용자(?:[A-Z])?)\s*[:：]\s*(.*)$/,
     speaker: 1, content: 2, timestamp: null,
   },
   {
     platform: 'generic',
-    regex: /^\[(사용자[A-Z]|인물[A-Z])\]\s*[:：]\s*(.*)$/,
+    regex: /^\[(상대방[A-Z]|사용자[A-Z]|인물[A-Z])\]\s*[:：]\s*(.*)$/,
     speaker: 1, content: 2, timestamp: null,
   },
   {
@@ -125,13 +125,13 @@ function isValidSpeaker(name) {
   return true
 }
 
-/** 실명·닉네임 + OCR 라벨 + 익명화된 나/사용자A */
+/** 실명·닉네임 + OCR 라벨 + 익명화된 나/상대방A */
 function isRecognizedSpeaker(name) {
   const n = String(name || '').trim()
   if (n === SELF_SPEAKER_LABEL) return true
   if (isAnonymizedOtherLabel(n)) return true
   if (isPseudoSpeaker(n)) return true
-  if (/^\[(?:사용자|인물)[A-Z]\]$/.test(n)) return true
+  if (/^\[(?:상대방|사용자|인물)[A-Z]?\]$/.test(n)) return true
   return isValidSpeaker(n)
 }
 

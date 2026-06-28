@@ -7,6 +7,7 @@ import {
   isAnonymizedOtherLabel,
   isOtherPseudoSpeaker,
   isSelfSpeaker,
+  normalizeSpeakerDisplayLabel,
   textHasSelfSpeaker,
 } from '../utils/speakerLabels.js'
 
@@ -46,7 +47,7 @@ export default function SelfSpeakerPick({ chatText, onAssign }) {
             onClick={() => handlePick(label)}
             className="px-4 py-2 rounded-xl bg-white border-2 border-amber-300 text-sm font-bold text-amber-800 hover:bg-amber-100 active:scale-95 transition-transform"
           >
-            {label}
+            {normalizeSpeakerDisplayLabel(label)}
           </button>
         ))}
       </div>

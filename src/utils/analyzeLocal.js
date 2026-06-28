@@ -135,7 +135,7 @@ function calcDominance(groups) {
   if (entries.length < 2) {
     return {
       dominance: '대화 참여자가 1명으로 확인되어 주도권 비교가 어렵습니다',
-      dominanceDetail: { personA: 50, personB: 50, personALabel: '사용자A', personBLabel: '사용자B' },
+      dominanceDetail: { personA: 50, personB: 50, personALabel: '상대방A', personBLabel: '상대방' },
     }
   }
 

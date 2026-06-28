@@ -43,7 +43,7 @@ export async function analyzeWithClaude(anonymizedText) {
     messages: [
       {
         role: 'user',
-        content: `아래는 카카오톡 대화입니다. 「나」=본인, 「사용자」/사용자A=익명화된 상대방.
+        content: `아래는 카카오톡 대화입니다. 「나」=본인, 「상대방」/상대방A=익명화된 상대.
 각 텍스트 필드(aiSummary, psychologySummary, solution, interpretation 등)는 **짧게 쓰지 말고** 프롬프트에 적힌 최소 문장 수를 지키세요. JSON만 반환하세요.${truncationNote}\n\n---\n${apiText}\n---`,
       },
     ],
