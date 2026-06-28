@@ -1,6 +1,6 @@
 import PrivacyBadge from './PrivacyBadge'
 import SeoContent from './SeoContent'
-import UsageGuide from './UsageGuide'
+import UsagePreview from './UsagePreview'
 import MobileImportPanel from './MobileImportPanel'
 import SelfSpeakerPick from './SelfSpeakerPick'
 import ShareQuotaPanel from './ShareQuotaPanel'
@@ -23,8 +23,6 @@ export default function InputStep({
   const needsSelfPick = needsSelfSpeakerSelection(chatText)
   const quotaBlocked = quota && !quota.canAnalyze
   const canAnalyze = isValid && !needsSelfPick && !quotaBlocked
-
-  const guideStep = !hasText ? 1 : needsSelfPick ? 2 : isValid && !quotaBlocked ? 3 : 1
 
   const buttonLabel = quotaBlocked
     ? '🥲 오늘 횟수 다 썼어'
@@ -55,11 +53,8 @@ export default function InputStep({
       </section>
 
       <div className="max-w-xl mx-auto">
-        <UsageGuide activeStep={guideStep} />
-
-        <div className="flex justify-center mb-4">
-          <PrivacyBadge />
-        </div>
+        <UsagePreview hidden={hasText} />
+        <PrivacyBadge />
 
         <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 md:p-5 mb-4">
           <MobileImportPanel
@@ -73,7 +68,7 @@ export default function InputStep({
             <p className="mt-3 text-xs text-emerald-600 font-semibold text-center">✅ 이름 가림 완료</p>
           )}
           {needsSelfPick && (
-            <p className="mt-3 text-xs text-amber-700 font-bold text-center">② 아래에서 너는 누구인지 골라줘</p>
+            <p className="mt-3 text-xs text-amber-700 font-bold text-center">👆 대화 속에서 너는 누구인지 골라줘</p>
           )}
           {!anonymized && hasText && speakers.length > 0 && !needsSelfPick && (
             <p className="mt-3 text-xs text-emerald-600 font-semibold text-center">✅ {speakers.length}명 대화 감지</p>
