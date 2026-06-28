@@ -6,6 +6,11 @@ export function getAdSenseConfig() {
       banner: String(import.meta.env.VITE_ADSENSE_SLOT_BANNER || '').trim(),
       rectangle: String(import.meta.env.VITE_ADSENSE_SLOT_RECTANGLE || '').trim(),
       leaderboard: String(import.meta.env.VITE_ADSENSE_SLOT_LEADERBOARD || '').trim(),
+      loading: String(
+        import.meta.env.VITE_ADSENSE_SLOT_LOADING ||
+        import.meta.env.VITE_ADSENSE_SLOT_RECTANGLE ||
+        '',
+      ).trim(),
     },
   }
 }

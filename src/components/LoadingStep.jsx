@@ -182,7 +182,7 @@ export default function LoadingStep({ preview, progress = 0, phase = '' }) {
         </p>
       </div>
 
-      <AdSlot variant="rectangle" className="mb-2 relative z-10" />
+      <AdSlot variant="loading" className="mb-2 relative z-10" />
     </div>
   )
 }

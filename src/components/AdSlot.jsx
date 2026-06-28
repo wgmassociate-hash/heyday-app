@@ -20,6 +20,12 @@ const VARIANTS = {
     label: '리더보드',
     minHeight: 250,
   },
+  loading: {
+    wrapper: 'w-full max-w-md mx-auto',
+    slot: 'w-full min-h-[250px]',
+    label: '로딩 화면',
+    minHeight: 250,
+  },
 }
 
 export default function AdSlot({ variant = 'banner', className = '' }) {

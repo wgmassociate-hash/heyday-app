@@ -55,8 +55,11 @@ git push -u origin main
 | `ADSENSE_PUBLISHER_ID` | `pub-1234...` 또는 `ca-pub-1234...` | AdSense 계정 정보 |
 | `VITE_ADSENSE_CLIENT` | `ca-pub-1234...` | AdSense 게시자 ID |
 | `VITE_ADSENSE_SLOT_BANNER` | `1234567890` | AdSense 광고 단위 |
-| `VITE_ADSENSE_SLOT_RECTANGLE` | `1234567890` | AdSense 광고 단위 |
+| `VITE_ADSENSE_SLOT_RECTANGLE` | `1234567890` | AdSense 광고 단위 (결과 화면 등) |
 | `VITE_ADSENSE_SLOT_LEADERBOARD` | `1234567890` | AdSense 광고 단위 |
+| `VITE_ADSENSE_SLOT_LOADING` | `1234567890` | AdSense 광고 단위 (**로딩 화면 전용**, 선택) |
+
+> `VITE_ADSENSE_SLOT_LOADING`을 비우면 로딩 화면은 `RECTANGLE` 슬롯을 그대로 씁니다. 로딩 노출만 따로 보려면 AdSense에서 광고 단위를 하나 더 만들고 여기에 넣으세요.
 
 > AdSense ID는 **나중에** 넣어도 됨. 그때까지는 회색 “광고 영역” placeholder만 보임.
 
