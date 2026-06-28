@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import AdSlot from './AdSlot'
 import AffectionTrendChart from './AffectionTrendChart'
 import CriticalMomentBubbles from './CriticalMomentBubbles'
@@ -108,6 +109,7 @@ export default function ResultStep({ result, onReset, quota, onQuotaUpdate, onSh
 
   const badge = RELATION_BADGE[relationType] ?? RELATION_BADGE.ambiguous
   const platformInfo = PLATFORM_LABEL[conversationMeta?.platform] ?? PLATFORM_LABEL.generic
+  const exportRef = useRef(null)
 
   const scoreRing =
     totalScore >= 80 ? 'from-emerald-400 to-emerald-600' :
@@ -116,6 +118,7 @@ export default function ResultStep({ result, onReset, quota, onQuotaUpdate, onSh
 
   return (
     <div className="animate-fade-in max-w-2xl mx-auto">
+      <div ref={exportRef}>
       <div className="text-center mb-6">
         <p className="text-sm text-gray-500 mb-1">
           분석 완료 ✨ · {messageCount}개 메시지
@@ -164,25 +167,6 @@ export default function ResultStep({ result, onReset, quota, onQuotaUpdate, onSh
           {relationTag}
         </span>
       </div>
-
-      <ResultShareActions
-        result={{
-          totalScore,
-          relationTag,
-          scoreLabel,
-          aiSummary,
-          psychologySummary,
-          dominance,
-          dominanceDetail,
-          metrics,
-          deepMetrics,
-          criticalMoments,
-          solution,
-          solutionTitle,
-          detectedTopics,
-        }}
-        onShareSuccess={onShareBonus}
-      />
 
       {psychologySummary && (
         <div className="bg-gradient-to-br from-violet-900 to-brand-900 rounded-2xl p-6 mb-6 text-white shadow-lg">
@@ -243,6 +227,7 @@ export default function ResultStep({ result, onReset, quota, onQuotaUpdate, onSh
       )}
 
       <AdSlot variant="banner" className="mb-6" />
+      </div>
 
       <div className="mb-6">
         <ShareQuotaPanel
@@ -252,6 +237,12 @@ export default function ResultStep({ result, onReset, quota, onQuotaUpdate, onSh
           showWhen="blocked-or-low"
         />
       </div>
+
+      <ResultShareActions
+        exportRef={exportRef}
+        totalScore={totalScore}
+        onShareSuccess={onShareBonus}
+      />
 
       <div className="text-center pb-8">
         <button

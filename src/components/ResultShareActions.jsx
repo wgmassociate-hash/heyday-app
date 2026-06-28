@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { saveResultImage, shareResultImage } from '../utils/shareResultImage.js'
 
-export default function ResultShareActions({ result, onShareSuccess }) {
+export default function ResultShareActions({ exportRef, totalScore, onShareSuccess }) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -9,7 +9,7 @@ export default function ResultShareActions({ result, onShareSuccess }) {
     setBusy(true)
     setMessage('')
     try {
-      await saveResultImage(result)
+      await saveResultImage(exportRef.current, totalScore)
       setMessage('📥 갤러리/다운로드 폴더에 저장됐어!')
     } catch (err) {
       setMessage(err?.message || '저장 실패 — 다시 시도해줘')
@@ -22,7 +22,7 @@ export default function ResultShareActions({ result, onShareSuccess }) {
     setBusy(true)
     setMessage('')
     try {
-      const mode = await shareResultImage(result)
+      const mode = await shareResultImage(exportRef.current, totalScore)
       if (mode === 'shared') {
         setMessage('💬 공유 완료! 카톡에서 골라서 보내줘')
         onShareSuccess?.()
@@ -40,11 +40,11 @@ export default function ResultShareActions({ result, onShareSuccess }) {
 
   return (
     <div className="mb-6 rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50/80 to-violet-50/60 p-4 md:p-5">
-      <p className="text-sm font-black text-gray-800 mb-1 text-center">📸 결과 카드 저장 · 공유</p>
+      <p className="text-sm font-black text-gray-800 mb-1 text-center">📸 결과 저장 · 공유</p>
       <p className="text-xs text-gray-500 mb-4 text-center leading-relaxed">
-        점수 · 심리 분석 · AI 요약 · 핵심 순간 · 팁이 담긴 리포트 카드
+        위에서 본 분석 리포트 전체를 이미지로 저장
         <br />
-        <span className="text-gray-400">(대화 원문·이름은 포함 안 됨)</span>
+        <span className="text-gray-400">(광고·대화 원문·이름은 포함 안 됨)</span>
       </p>
 
       <div className="flex flex-col sm:flex-row gap-2">

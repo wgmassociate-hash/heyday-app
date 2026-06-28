@@ -42,7 +42,7 @@ export default function AdSlot({ variant = 'banner', className = '' }) {
 
   if (!active) {
     return (
-      <div className={`${config.wrapper} ${className}`}>
+      <div className={`${config.wrapper} ${className}`} data-export-exclude>
         <div
           className={`${config.slot} rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/80 flex items-center justify-center overflow-hidden`}
         >
@@ -56,7 +56,7 @@ export default function AdSlot({ variant = 'banner', className = '' }) {
   }
 
   return (
-    <div className={`${config.wrapper} ${className}`}>
+    <div className={`${config.wrapper} ${className}`} data-export-exclude>
       <ins
         className={`adsbygoogle block ${config.slot}`}
         style={{ display: 'block', minHeight: config.minHeight }}
