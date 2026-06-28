@@ -20,9 +20,9 @@ export default function QuotaBadge({ quota, className = '' }) {
       <span>
         {empty ? '오늘 횟수 소진' : `오늘 ${remaining}회 남음`}
       </span>
-      {!empty && (
+      {usedToday > 0 && (
         <span className="text-[10px] font-semibold opacity-60">
-          ({usedToday}/{maxAllowed})
+          ({usedToday}회 사용)
         </span>
       )}
     </div>

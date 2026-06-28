@@ -249,6 +249,7 @@ export default function ResultStep({ result, onReset, quota, onQuotaUpdate, onSh
           quota={quota}
           onSuccess={onQuotaUpdate}
           variant="compact"
+          showWhen="blocked-or-low"
         />
       </div>
 

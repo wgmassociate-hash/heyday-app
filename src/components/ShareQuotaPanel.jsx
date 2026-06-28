@@ -1,7 +1,18 @@
 import { useState } from 'react'
 import { claimShareBonus, getShareUrl, SHARE_MESSAGE } from '../utils/quotaApi.js'
 
-export default function ShareQuotaPanel({ quota, onSuccess, highlight = false, variant = 'card' }) {
+/**
+ * @param {'any' | 'blocked-only' | 'blocked-or-low'} showWhen
+ * - blocked-only: 횟수 소진 시에만 (입력 화면)
+ * - blocked-or-low: 소진 또는 1회 남음 (결과 화면)
+ */
+export default function ShareQuotaPanel({
+  quota,
+  onSuccess,
+  highlight = false,
+  variant = 'card',
+  showWhen = 'any',
+}) {
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState('')
 
@@ -9,8 +20,11 @@ export default function ShareQuotaPanel({ quota, onSuccess, highlight = false, v
 
   const canEarn = quota.canEarnShareBonus
   const empty = !quota.canAnalyze
+  const low = quota.remaining <= 1
 
-  if (!empty && !canEarn && quota.shareBonusEarned >= quota.shareBonusMax) return null
+  if (showWhen === 'blocked-only' && !empty) return null
+  if (showWhen === 'blocked-or-low' && !empty && !low) return null
+  if (!canEarn && !empty) return null
 
   const finishShare = async () => {
     setBusy(true)
@@ -41,7 +55,7 @@ export default function ShareQuotaPanel({ quota, onSuccess, highlight = false, v
         })
       } else {
         await navigator.clipboard.writeText(`${SHARE_MESSAGE}\n${url}`)
-        setFeedback('링크 복사됨! 친구한테 보내줘 📋')
+        setFeedback('링크 복사됨! 친구한테 보내봐 📋')
       }
       await finishShare()
     } catch (err) {
@@ -78,7 +92,7 @@ export default function ShareQuotaPanel({ quota, onSuccess, highlight = false, v
   return (
     <div className={wrapperClass}>
       <p className="text-sm font-black text-gray-800 mb-1">
-        {empty ? '🥲 오늘 AI 분석 다 썼어' : '💌 한 번 더 하고 싶어?'}
+        {empty ? '🥲 오늘 AI 분석 다 썼어' : '⚡ 1번 더 하려면 공유해줘'}
       </p>
       <p className="text-xs text-gray-600 mb-3 leading-relaxed">
         {empty ? (
@@ -88,8 +102,8 @@ export default function ShareQuotaPanel({ quota, onSuccess, highlight = false, v
           </>
         ) : (
           <>
-            공유 1번 = <strong>+1회</strong> · 오늘 보너스{' '}
-            <strong>{quota.shareBonusRemaining}번</strong> 남음
+            지금 <strong>{quota.remaining}회</strong> 남음 · 공유하면 <strong>+1회</strong> 더 (
+            보너스 {quota.shareBonusRemaining}번 가능)
           </>
         )}
       </p>

@@ -82,14 +82,6 @@ export default function InputStep({
           <SelfSpeakerPick chatText={chatText} onAssign={onChange} />
         </div>
 
-        <div ref={sharePanelRef} className="mb-4">
-          <ShareQuotaPanel
-            quota={quota}
-            onSuccess={onQuotaUpdate}
-            highlight={shareHighlight}
-          />
-        </div>
-
         <button
           type="button"
           onClick={onSubmit}
@@ -107,16 +99,26 @@ export default function InputStep({
             저장 안 함 · 캡처 OCR도 1회 · 보통 30초
           </p>
         )}
-        {quotaBlocked && (
-          <p className="text-center text-xs text-amber-600 font-semibold mt-2">
-            👆 공유하면 1번 더 분석할 수 있어
-          </p>
-        )}
         {!canAnalyze && !needsSelfPick && !quotaBlocked && (
           <p className="text-center text-xs text-gray-400 mt-2">
             {hasText ? '대화 길이를 확인해줘' : '위에서 캡처 또는 붙여넣기를 선택해줘'}
           </p>
         )}
+
+        {quotaBlocked && (
+          <div ref={sharePanelRef} className="mt-4">
+            <ShareQuotaPanel
+              quota={quota}
+              onSuccess={onQuotaUpdate}
+              highlight={shareHighlight}
+              showWhen="blocked-only"
+            />
+            <p className="text-center text-xs text-amber-600 font-semibold mt-2">
+              공유하면 오늘 1번 더 분석할 수 있어
+            </p>
+          </div>
+        )}
+
         <p className="text-center text-xs text-gray-500 mt-4">
           <a
             href="https://www.heydaystar.co.kr"
