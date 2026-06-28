@@ -2,6 +2,7 @@ import AdSlot from './AdSlot'
 import AffectionTrendChart from './AffectionTrendChart'
 import CriticalMomentBubbles from './CriticalMomentBubbles'
 import DeepMetricsPanel from './DeepMetricsPanel'
+import ShareQuotaPanel from './ShareQuotaPanel'
 
 const PLATFORM_LABEL = {
   kakao: { label: '카카오톡', icon: '💬' },
@@ -80,7 +81,7 @@ function verdictLabel(score) {
   return '관심 낮음 💤'
 }
 
-export default function ResultStep({ result, onReset }) {
+export default function ResultStep({ result, onReset, quota, onQuotaUpdate }) {
   const {
     totalScore,
     relationTag,
@@ -221,7 +222,15 @@ export default function ResultStep({ result, onReset }) {
         </div>
       )}
 
-      <AdSlot variant="banner" className="mb-8" />
+      <AdSlot variant="banner" className="mb-6" />
+
+      <div className="mb-6">
+        <ShareQuotaPanel
+          quota={quota}
+          onSuccess={onQuotaUpdate}
+          variant="compact"
+        />
+      </div>
 
       <div className="text-center pb-8">
         <button

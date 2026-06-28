@@ -1,10 +1,12 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import AdSlot from './components/AdSlot'
 import InputStep from './components/InputStep'
 import LoadingStep from './components/LoadingStep'
 import ResultStep from './components/ResultStep'
+import QuotaBadge from './components/QuotaBadge'
 import { analyzeChat, anonymizeChatText } from './utils/anonymize'
 import { scrubResultNames } from './utils/scrubResult.js'
+import { fetchQuota } from './utils/quotaApi.js'
 
 const STEPS = {
   INPUT: 'input',
@@ -27,9 +29,26 @@ export default function App() {
   const [result, setResult] = useState(null)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [loadingState, setLoadingState] = useState(null)
+  const [quota, setQuota] = useState(null)
+  const [shareHighlight, setShareHighlight] = useState(false)
+  const sharePanelRef = useRef(null)
 
   const lineCount = chatText.trim().split('\n').filter(Boolean).length
   const isValid = lineCount >= 3
+
+  const refreshQuota = useCallback(async () => {
+    const q = await fetchQuota()
+    if (q) setQuota(q)
+  }, [])
+
+  useEffect(() => {
+    refreshQuota()
+  }, [refreshQuota])
+
+  const handleQuotaUpdate = useCallback((next) => {
+    if (next) setQuota(next)
+    else refreshQuota()
+  }, [refreshQuota])
 
   const transitionTo = useCallback((nextStep) => {
     setIsTransitioning(true)
@@ -41,6 +60,14 @@ export default function App() {
 
   const handleSubmit = async () => {
     if (!isValid) return
+
+    if (quota && !quota.canAnalyze) {
+      setShareHighlight(true)
+      setTimeout(() => {
+        sharePanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
+      return
+    }
 
     const { anonymizedText, nameMap } = anonymizeChatText(chatText)
     const { analyzeLocally } = await import('./utils/analyzeLocal.js')
@@ -64,15 +91,27 @@ export default function App() {
     try {
       const data = await analyzeChat(chatText)
       clearInterval(progressTimer)
+      if (data.quota) setQuota(data.quota)
+      else await refreshQuota()
       setLoadingState((prev) =>
         prev ? { ...prev, progress: 100, phase: '분석 완료!' } : null,
       )
       setResult(data)
+      setShareHighlight(false)
       transitionTo(STEPS.RESULT)
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
       clearInterval(progressTimer)
       console.error('[analyze]', err)
+      if (err?.code === 'QUOTA_EXCEEDED') {
+        if (err.quota) setQuota(err.quota)
+        setShareHighlight(true)
+        transitionTo(STEPS.INPUT)
+        setTimeout(() => {
+          sharePanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }, 350)
+        return
+      }
       transitionTo(STEPS.INPUT)
       alert(`분석 중 오류: ${err?.message || '알 수 없는 오류'}`)
     } finally {
@@ -84,29 +123,34 @@ export default function App() {
     setChatText('')
     setResult(null)
     setLoadingState(null)
+    setShareHighlight(false)
     transitionTo(STEPS.INPUT)
+    refreshQuota()
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-pink-50 via-white to-violet-50/40">
       <header className="sticky top-0 z-10 bg-white/90 backdrop-blur-md border-b border-pink-100/80">
-        <div className="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">💕</span>
-            <span className="font-black text-gray-800 text-base">
+        <div className="max-w-xl mx-auto px-4 py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xl shrink-0">💕</span>
+            <span className="font-black text-gray-800 text-base truncate">
               heydaystar
             </span>
           </div>
-          {step === STEPS.RESULT && (
-            <button
-              type="button"
-              onClick={handleReset}
-              className="text-sm text-brand-600 hover:text-brand-700 font-bold"
-            >
-              ↩ 다시
-            </button>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            <QuotaBadge quota={quota} />
+            {step === STEPS.RESULT && (
+              <button
+                type="button"
+                onClick={handleReset}
+                className="text-sm text-brand-600 hover:text-brand-700 font-bold"
+              >
+                ↩ 다시
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -120,6 +164,10 @@ export default function App() {
               onChange={setChatText}
               onSubmit={handleSubmit}
               isValid={isValid}
+              quota={quota}
+              onQuotaUpdate={handleQuotaUpdate}
+              shareHighlight={shareHighlight}
+              sharePanelRef={sharePanelRef}
             />
           )}
           {step === STEPS.LOADING && (
@@ -130,7 +178,12 @@ export default function App() {
             />
           )}
           {step === STEPS.RESULT && result && (
-            <ResultStep result={result} onReset={handleReset} />
+            <ResultStep
+              result={result}
+              onReset={handleReset}
+              quota={quota}
+              onQuotaUpdate={handleQuotaUpdate}
+            />
           )}
         </div>
       </main>

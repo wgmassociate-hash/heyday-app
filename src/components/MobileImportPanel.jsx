@@ -2,7 +2,7 @@ import { useState } from 'react'
 import ScreenshotImportPanel from './ScreenshotImportPanel'
 import { deliverChatText } from '../utils/deliverChatText.js'
 
-export default function MobileImportPanel({ chatText, onChange }) {
+export default function MobileImportPanel({ chatText, onChange, onQuotaUpdate, onQuotaBlocked }) {
   const [tab, setTab] = useState('screenshot')
   const hasText = chatText.trim().length > 0
   const lineCount = chatText.trim().split('\n').filter(Boolean).length
@@ -84,7 +84,11 @@ export default function MobileImportPanel({ chatText, onChange }) {
               </li>
             </ol>
           )}
-          <ScreenshotImportPanel onTextLoaded={onChange} />
+          <ScreenshotImportPanel
+            onTextLoaded={onChange}
+            onQuotaUpdate={onQuotaUpdate}
+            onQuotaBlocked={onQuotaBlocked}
+          />
         </div>
       ) : (
         <div role="tabpanel">

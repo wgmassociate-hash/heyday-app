@@ -15,6 +15,9 @@ dist-ssr
 .env.*
 !.env.example
 
+# Server quota persistence (runtime data)
+server/data/quota.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

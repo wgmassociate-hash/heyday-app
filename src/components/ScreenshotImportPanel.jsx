@@ -12,7 +12,7 @@ function moveItem(list, from, to) {
   return next
 }
 
-export default function ScreenshotImportPanel({ onTextLoaded }) {
+export default function ScreenshotImportPanel({ onTextLoaded, onQuotaUpdate, onQuotaBlocked }) {
   const [items, setItems] = useState([])
   const [dragIndex, setDragIndex] = useState(null)
   const [extracting, setExtracting] = useState(false)
@@ -61,10 +61,18 @@ export default function ScreenshotImportPanel({ onTextLoaded }) {
         return
       }
 
+      if (data.quota) onQuotaUpdate?.(data.quota)
+
       onTextLoaded(anonymizedText)
       setDoneMessage('✅ 대화 읽기 완료! 아래에서 확인하고 분석 버튼을 눌러줘')
       document.getElementById('chat-input-review')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     } catch (err) {
+      if (err?.code === 'QUOTA_EXCEEDED') {
+        if (err.quota) onQuotaUpdate?.(err.quota)
+        else onQuotaBlocked?.()
+        setError(err.message || '오늘 AI 사용 횟수를 다 썼어. 공유하면 +1회!')
+        return
+      }
       setError(err?.message || '실패했어. 다시 시도해봐')
     } finally {
       setExtracting(false)

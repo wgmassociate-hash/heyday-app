@@ -12,6 +12,13 @@ const { analyzeWithClaude } = await import('./analyze.js')
 const { extractChatFromScreenshots } = await import('./ocrScreenshots.js')
 const { anonymizeChatText, getConversationMeta, parseMessages } = await import('../src/utils/parseChat.js')
 const { scrubResultNames } = await import('../src/utils/scrubResult.js')
+const {
+  parseDeviceId,
+  getQuotaStatus,
+  assertCanUseQuota,
+  consumeQuota,
+  grantShareBonus,
+} = await import('./quota.js')
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -57,8 +64,42 @@ app.get('/api/health', (_req, res) => {
   })
 })
 
+app.get('/api/quota', (req, res) => {
+  const deviceId = parseDeviceId(req)
+  if (!deviceId) {
+    return res.status(400).json({ error: '기기 ID가 필요합니다.' })
+  }
+  res.json(getQuotaStatus(deviceId))
+})
+
+app.post('/api/quota/share', asyncHandler(async (req, res) => {
+  const deviceId = parseDeviceId(req)
+  if (!deviceId) {
+    return res.status(400).json({ ok: false, error: '기기 ID가 필요합니다.' })
+  }
+  const result = grantShareBonus(deviceId)
+  if (!result.ok) {
+    return res.status(429).json({ ok: false, error: result.error, quota: result.status })
+  }
+  res.json({ ok: true, quota: result.status })
+}))
+
 app.post('/api/ocr-screenshots', asyncHandler(async (req, res) => {
   const { images } = req.body ?? {}
+  const deviceId = parseDeviceId(req)
+
+  if (!deviceId) {
+    return res.status(400).json({ error: '기기 ID가 필요합니다. 페이지를 새로고침해 주세요.' })
+  }
+
+  const quotaCheck = assertCanUseQuota(deviceId)
+  if (!quotaCheck.ok) {
+    return res.status(429).json({
+      error: quotaCheck.error,
+      quota: quotaCheck.status,
+      code: 'QUOTA_EXCEEDED',
+    })
+  }
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(503).json({
@@ -70,7 +111,8 @@ app.post('/api/ocr-screenshots', asyncHandler(async (req, res) => {
 
   try {
     const result = await extractChatFromScreenshots(images)
-    res.json(result)
+    const consumed = consumeQuota(deviceId)
+    res.json({ ...result, quota: consumed.status })
   } catch (err) {
     console.error('[ocr]', err.message)
     const status = /API 키|스크린샷|이미지|잘못된/.test(err.message) ? 400 : 500
@@ -80,6 +122,21 @@ app.post('/api/ocr-screenshots', asyncHandler(async (req, res) => {
 
 app.post('/api/analyze', asyncHandler(async (req, res) => {
   const { text, nameMap: clientNameMap } = req.body ?? {}
+  const deviceId = parseDeviceId(req)
+
+  if (!deviceId) {
+    return res.status(400).json({ error: '기기 ID가 필요합니다. 페이지를 새로고침해 주세요.' })
+  }
+
+  const quotaCheck = assertCanUseQuota(deviceId)
+  if (!quotaCheck.ok) {
+    return res.status(429).json({
+      error: quotaCheck.error,
+      quota: quotaCheck.status,
+      code: 'QUOTA_EXCEEDED',
+      fallback: false,
+    })
+  }
 
   if (!text || typeof text !== 'string' || text.trim().length < 10) {
     return res.status(400).json({ error: '분석할 대화 텍스트가 너무 짧습니다.' })
@@ -110,7 +167,12 @@ app.post('/api/analyze', asyncHandler(async (req, res) => {
     let result = await analyzeWithClaude(anonymizedText)
     result = scrubResultNames(result, nameMap)
     const meta = getConversationMeta(parseMessages(anonymizedText))
-    res.json({ ...result, conversationMeta: result.conversationMeta ?? meta })
+    const consumed = consumeQuota(deviceId)
+    res.json({
+      ...result,
+      conversationMeta: result.conversationMeta ?? meta,
+      quota: consumed.status,
+    })
   } catch (err) {
     console.error('[analyze]', err.message)
     res.status(500).json({

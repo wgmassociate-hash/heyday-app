@@ -1,4 +1,5 @@
 import { compressImageForUpload } from './compressImage.js'
+import { apiHeaders } from './deviceId.js'
 
 export const MAX_SCREENSHOTS = 6
 
@@ -41,7 +42,7 @@ export async function ocrScreenshots(files) {
   try {
     response = await fetch('/api/ocr-screenshots', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
       body: payload,
       signal: AbortSignal.timeout(180_000),
     })
@@ -86,6 +87,12 @@ export async function ocrScreenshots(files) {
   }
 
   if (!response.ok) {
+    if (response.status === 429 && data?.code === 'QUOTA_EXCEEDED') {
+      const err = new Error(data.error || '오늘 AI 분석 횟수를 모두 사용했어요.')
+      err.code = 'QUOTA_EXCEEDED'
+      err.quota = data.quota
+      throw err
+    }
     throw new Error(data?.error || `OCR 오류 (HTTP ${response.status})`)
   }
 
