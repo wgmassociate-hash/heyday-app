@@ -12,13 +12,18 @@ function moveItem(list, from, to) {
   return next
 }
 
-export default function ScreenshotImportPanel({ onTextLoaded, onQuotaUpdate, onQuotaBlocked }) {
+export default function ScreenshotImportPanel({ onTextLoaded, onQuotaUpdate, onQuotaBlocked, textReady = false }) {
   const [items, setItems] = useState([])
   const [dragIndex, setDragIndex] = useState(null)
   const [extracting, setExtracting] = useState(false)
   const [doneMessage, setDoneMessage] = useState('')
   const [error, setError] = useState('')
   const inputRef = useRef(null)
+
+  const invalidateExtract = useCallback(() => {
+    if (textReady) onTextLoaded('')
+    setDoneMessage('')
+  }, [textReady, onTextLoaded])
 
   const addFiles = useCallback((fileList) => {
     const incoming = Array.from(fileList || []).filter((f) => f.type.startsWith('image/'))
@@ -35,8 +40,9 @@ export default function ScreenshotImportPanel({ onTextLoaded, onQuotaUpdate, onQ
       return [...prev, ...added]
     })
     setError('')
+    if (textReady) onTextLoaded('')
     setDoneMessage('')
-  }, [])
+  }, [textReady, onTextLoaded])
 
   const removeItem = (id) => {
     setItems((prev) => {
@@ -44,6 +50,7 @@ export default function ScreenshotImportPanel({ onTextLoaded, onQuotaUpdate, onQ
       if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl)
       return prev.filter((x) => x.id !== id)
     })
+    invalidateExtract()
   }
 
   const handleExtract = async () => {
@@ -64,7 +71,7 @@ export default function ScreenshotImportPanel({ onTextLoaded, onQuotaUpdate, onQ
       if (data.quota) onQuotaUpdate?.(data.quota)
 
       onTextLoaded(anonymizedText)
-      setDoneMessage('✅ 대화 읽기 완료! 아래에서 확인하고 분석 버튼을 눌러줘')
+      setDoneMessage('')
       document.getElementById('chat-input-review')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     } catch (err) {
       if (err?.code === 'QUOTA_EXCEEDED') {
@@ -80,7 +87,13 @@ export default function ScreenshotImportPanel({ onTextLoaded, onQuotaUpdate, onQ
   }
 
   return (
-    <div className="rounded-2xl border-2 border-dashed border-violet-200 bg-violet-50/40 p-4">
+    <div
+      className={`rounded-2xl border-2 border-dashed p-4 transition-colors ${
+        textReady
+          ? 'border-emerald-200 bg-emerald-50/30'
+          : 'border-violet-200 bg-violet-50/40'
+      }`}
+    >
       {items.length === 0 ? (
         <button
           type="button"
@@ -118,6 +131,7 @@ export default function ScreenshotImportPanel({ onTextLoaded, onQuotaUpdate, onQ
                   if (dragIndex == null) return
                   setItems((prev) => moveItem(prev, dragIndex, index))
                   setDragIndex(null)
+                  invalidateExtract()
                 }}
                 onDragEnd={() => setDragIndex(null)}
                 className={`relative rounded-xl border bg-white overflow-hidden ${
@@ -144,14 +158,33 @@ export default function ScreenshotImportPanel({ onTextLoaded, onQuotaUpdate, onQ
             ))}
           </ul>
 
-          <button
-            type="button"
-            onClick={handleExtract}
-            disabled={extracting}
-            className="w-full py-3.5 rounded-xl bg-violet-600 text-white text-base font-black hover:bg-violet-700 disabled:opacity-50 active:scale-[0.98] shadow-md shadow-violet-200/80"
-          >
-            {extracting ? '⏳ AI가 글자 읽는 중...' : '③ 글자 뽑기 → 대화 확인'}
-          </button>
+          {textReady ? (
+            <div className="space-y-2">
+              <div className="w-full py-3.5 px-4 rounded-xl bg-emerald-100 border-2 border-emerald-200 text-emerald-900 text-sm font-black text-center">
+                ✅ 글자 뽑기 완료
+              </div>
+              <p className="text-xs text-emerald-700 font-semibold text-center leading-relaxed">
+                아래에서 대화 확인 → 맨 아래 <strong>호감도 분석 시작</strong>
+              </p>
+              <button
+                type="button"
+                onClick={handleExtract}
+                disabled={extracting}
+                className="w-full py-2 rounded-lg border border-violet-200 bg-white text-xs font-bold text-violet-600 hover:bg-violet-50 disabled:opacity-50"
+              >
+                {extracting ? '⏳ 다시 읽는 중…' : '🔄 캡처 바꿨으면 다시 읽기'}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleExtract}
+              disabled={extracting}
+              className="w-full py-3.5 rounded-xl bg-violet-600 text-white text-base font-black hover:bg-violet-700 disabled:opacity-50 active:scale-[0.98] shadow-md shadow-violet-200/80"
+            >
+              {extracting ? '⏳ AI가 글자 읽는 중…' : '글자 뽑기'}
+            </button>
+          )}
         </>
       )}
 

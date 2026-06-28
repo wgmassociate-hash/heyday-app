@@ -88,6 +88,7 @@ export default function MobileImportPanel({ chatText, onChange, onQuotaUpdate, o
             onTextLoaded={onChange}
             onQuotaUpdate={onQuotaUpdate}
             onQuotaBlocked={onQuotaBlocked}
+            textReady={hasText}
           />
         </div>
       ) : (
@@ -143,9 +144,9 @@ export default function MobileImportPanel({ chatText, onChange, onQuotaUpdate, o
       )}
 
       {hasText && tab === 'screenshot' && (
-        <div className="mt-4 pt-4 border-t border-gray-100">
+        <div className="mt-4 pt-4 border-t-2 border-emerald-100">
           <div className="flex items-center justify-between gap-2 mb-2">
-            <p className="text-sm font-bold text-gray-800">✅ 읽은 대화 확인</p>
+            <p className="text-sm font-black text-emerald-800">👇 읽은 대화 확인</p>
             <button
               type="button"
               onClick={() => onChange('')}
@@ -166,7 +167,7 @@ export default function MobileImportPanel({ chatText, onChange, onQuotaUpdate, o
           {lineCount < 3 ? (
             <p className="mt-2 text-xs text-amber-600 font-semibold">대화가 너무 짧아. 캡처를 더 추가해봐 ({lineCount}/3줄)</p>
           ) : (
-            <p className="mt-2 text-xs text-emerald-600 font-semibold">👇 확인했으면 아래 분석 버튼 눌러!</p>
+            <p className="mt-2 text-xs text-brand-600 font-black">✅ 확인 끝! 맨 아래 「호감도 분석 시작」 눌러</p>
           )}
         </div>
       )}
