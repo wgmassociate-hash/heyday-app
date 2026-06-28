@@ -3,6 +3,7 @@ import AffectionTrendChart from './AffectionTrendChart'
 import CriticalMomentBubbles from './CriticalMomentBubbles'
 import DeepMetricsPanel from './DeepMetricsPanel'
 import ShareQuotaPanel from './ShareQuotaPanel'
+import ResultShareActions from './ResultShareActions'
 
 const PLATFORM_LABEL = {
   kakao: { label: '카카오톡', icon: '💬' },
@@ -81,7 +82,7 @@ function verdictLabel(score) {
   return '관심 낮음 💤'
 }
 
-export default function ResultStep({ result, onReset, quota, onQuotaUpdate }) {
+export default function ResultStep({ result, onReset, quota, onQuotaUpdate, onShareBonus }) {
   const {
     totalScore,
     relationTag,
@@ -163,6 +164,25 @@ export default function ResultStep({ result, onReset, quota, onQuotaUpdate }) {
           {relationTag}
         </span>
       </div>
+
+      <ResultShareActions
+        result={{
+          totalScore,
+          relationTag,
+          scoreLabel,
+          aiSummary,
+          psychologySummary,
+          dominance,
+          dominanceDetail,
+          metrics,
+          deepMetrics,
+          criticalMoments,
+          solution,
+          solutionTitle,
+          detectedTopics,
+        }}
+        onShareSuccess={onShareBonus}
+      />
 
       {psychologySummary && (
         <div className="bg-gradient-to-br from-violet-900 to-brand-900 rounded-2xl p-6 mb-6 text-white shadow-lg">

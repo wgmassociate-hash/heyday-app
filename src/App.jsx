@@ -6,7 +6,7 @@ import ResultStep from './components/ResultStep'
 import QuotaBadge from './components/QuotaBadge'
 import { analyzeChat, anonymizeChatText } from './utils/anonymize'
 import { scrubResultNames } from './utils/scrubResult.js'
-import { fetchQuota } from './utils/quotaApi.js'
+import { fetchQuota, claimShareBonus } from './utils/quotaApi.js'
 
 const STEPS = {
   INPUT: 'input',
@@ -49,6 +49,11 @@ export default function App() {
     if (next) setQuota(next)
     else refreshQuota()
   }, [refreshQuota])
+
+  const handleShareBonus = useCallback(async () => {
+    const result = await claimShareBonus()
+    if (result.quota) setQuota(result.quota)
+  }, [])
 
   const transitionTo = useCallback((nextStep) => {
     setIsTransitioning(true)
@@ -183,6 +188,7 @@ export default function App() {
               onReset={handleReset}
               quota={quota}
               onQuotaUpdate={handleQuotaUpdate}
+              onShareBonus={handleShareBonus}
             />
           )}
         </div>
