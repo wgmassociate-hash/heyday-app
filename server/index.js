@@ -19,23 +19,22 @@ const {
   consumeQuota,
   grantShareBonus,
 } = await import('./quota.js')
+const { corsOriginCallback } = await import('./corsConfig.ts')
+const { DatabaseUnavailableError } = await import('./db/fallbackPolicy.ts')
 
 const app = express()
 const PORT = process.env.PORT || 3001
 const isProd = process.env.NODE_ENV === 'production'
 
-app.use(cors())
-app.use(express.json({ limit: '12mb' }))
+/** True for a Postgres outage that the fallback policy refused to hide
+ * (docs/implementation_plan_v2.md §Phase 0.5 fallback policy) — surfaced as
+ * 503 everywhere, instead of a generic 500, so it's obviously infra-side. */
+function isDatabaseUnavailable(err) {
+  return err instanceof DatabaseUnavailableError || err?.name === 'DatabaseUnavailableError'
+}
 
-app.use((err, req, res, next) => {
-  if (err?.type === 'entity.too.large') {
-    return res.status(413).json({ error: '이미지 용량이 너무 큽니다. 스크린샷을 줄이거나 장 수를 줄여 주세요.' })
-  }
-  if (err instanceof SyntaxError && 'body' in err) {
-    return res.status(400).json({ error: '요청 형식이 올바르지 않습니다.' })
-  }
-  next(err)
-})
+app.use(cors({ origin: corsOriginCallback }))
+app.use(express.json({ limit: '12mb' }))
 
 app.use((_req, res, next) => {
   res.setTimeout(180_000)
@@ -64,20 +63,20 @@ app.get('/api/health', (_req, res) => {
   })
 })
 
-app.get('/api/quota', (req, res) => {
+app.get('/api/quota', asyncHandler(async (req, res) => {
   const deviceId = parseDeviceId(req)
   if (!deviceId) {
     return res.status(400).json({ error: '기기 ID가 필요합니다.' })
   }
-  res.json(getQuotaStatus(deviceId))
-})
+  res.json(await getQuotaStatus(deviceId))
+}))
 
 app.post('/api/quota/share', asyncHandler(async (req, res) => {
   const deviceId = parseDeviceId(req)
   if (!deviceId) {
     return res.status(400).json({ ok: false, error: '기기 ID가 필요합니다.' })
   }
-  const result = grantShareBonus(deviceId)
+  const result = await grantShareBonus(deviceId)
   if (!result.ok) {
     return res.status(429).json({ ok: false, error: result.error, quota: result.status })
   }
@@ -92,7 +91,7 @@ app.post('/api/ocr-screenshots', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: '기기 ID가 필요합니다. 페이지를 새로고침해 주세요.' })
   }
 
-  const quotaCheck = assertCanUseQuota(deviceId)
+  const quotaCheck = await assertCanUseQuota(deviceId)
   if (!quotaCheck.ok) {
     return res.status(429).json({
       error: quotaCheck.error,
@@ -110,25 +109,33 @@ app.post('/api/ocr-screenshots', asyncHandler(async (req, res) => {
   }
 
   try {
-    const result = await extractChatFromScreenshots(images)
-    const consumed = consumeQuota(deviceId)
+    const result = await extractChatFromScreenshots(images, deviceId)
+    const consumed = await consumeQuota(deviceId)
     res.json({ ...result, quota: consumed.status })
   } catch (err) {
     console.error('[ocr]', err.message)
+    if (isDatabaseUnavailable(err)) {
+      return res.status(503).json({ error: err.message, code: 'DATABASE_UNAVAILABLE' })
+    }
     const status = /API 키|스크린샷|이미지|잘못된/.test(err.message) ? 400 : 500
     res.status(status).json({ error: err.message || '스크린샷 OCR에 실패했습니다.' })
   }
 }))
 
 app.post('/api/analyze', asyncHandler(async (req, res) => {
-  const { text, nameMap: clientNameMap } = req.body ?? {}
+  // 2.0 Phase 0: the client no longer sends `nameMap` — it now redacts real
+  // names (and phone numbers/emails) from the message body itself before this
+  // request is ever made (src/utils/anonymize.js), so the server has nothing
+  // to un-leak. anonymizeChatText() below is kept purely as a defense-in-depth
+  // backstop (docs/implementation_plan_v2.md §6.2).
+  const { text } = req.body ?? {}
   const deviceId = parseDeviceId(req)
 
   if (!deviceId) {
     return res.status(400).json({ error: '기기 ID가 필요합니다. 페이지를 새로고침해 주세요.' })
   }
 
-  const quotaCheck = assertCanUseQuota(deviceId)
+  const quotaCheck = await assertCanUseQuota(deviceId)
   if (!quotaCheck.ok) {
     return res.status(429).json({
       error: quotaCheck.error,
@@ -152,22 +159,23 @@ app.post('/api/analyze', asyncHandler(async (req, res) => {
   }
 
   try {
-    const { anonymizedText, nameMap: derivedNameMap } = anonymizeChatText(text.trim())
-    const nameMap =
-      clientNameMap && typeof clientNameMap === 'object' && Object.keys(clientNameMap).length > 0
-        ? clientNameMap
-        : derivedNameMap
+    // Defense-in-depth only: on text the client has already anonymized, this
+    // returns an empty map (isAlreadyAnonymized short-circuits). It only does
+    // real work if non-anonymized text somehow reaches the server — never
+    // logged with real names either way (analysis_v1.md §4.7 flagged the old
+    // dev-only log as printing raw name→label pairs).
+    const { anonymizedText, nameMap } = anonymizeChatText(text.trim())
 
     if (Object.keys(nameMap).length === 0) {
-      console.warn('[analyze] 발화자 추출 실패 — 카톡 내보내기 형식인지 확인하세요')
+      console.warn('[analyze] 발화자 추출 실패했거나 이미 익명화된 텍스트입니다')
     } else if (!isProd) {
-      console.log('[analyze] 익명화:', Object.entries(nameMap).map(([k, v]) => `${k}→${v}`).join(', '))
+      console.log(`[analyze] 서버 측 익명화 백스톱 발동 (${Object.keys(nameMap).length}명)`)
     }
 
-    let result = await analyzeWithClaude(anonymizedText)
+    let result = await analyzeWithClaude(anonymizedText, deviceId)
     result = scrubResultNames(result, nameMap)
     const meta = getConversationMeta(parseMessages(anonymizedText))
-    const consumed = consumeQuota(deviceId)
+    const consumed = await consumeQuota(deviceId)
     res.json({
       ...result,
       conversationMeta: result.conversationMeta ?? meta,
@@ -175,6 +183,9 @@ app.post('/api/analyze', asyncHandler(async (req, res) => {
     })
   } catch (err) {
     console.error('[analyze]', err.message)
+    if (isDatabaseUnavailable(err)) {
+      return res.status(503).json({ error: err.message, code: 'DATABASE_UNAVAILABLE', fallback: false })
+    }
     res.status(500).json({
       error: err.message || 'Claude API 분석 중 오류가 발생했습니다.',
       fallback: true,
@@ -188,6 +199,10 @@ app.use((err, req, res, next) => {
   }
   if (err instanceof SyntaxError && 'body' in err) {
     return res.status(400).json({ error: '요청 형식이 올바르지 않습니다.' })
+  }
+  if (isDatabaseUnavailable(err)) {
+    console.error('[server] DB unavailable:', err.message)
+    return res.status(503).json({ error: err.message, code: 'DATABASE_UNAVAILABLE' })
   }
   console.error('[server]', err)
   res.status(500).json({ error: err?.message || '서버 오류가 발생했습니다.' })

@@ -201,6 +201,22 @@ export const prismaAnalysisResultRepository: AnalysisResultRepository = {
 
 `claimForPaidStage()`의 원자성은 Prisma의 `updateMany`가 단일 SQL `UPDATE ... WHERE ...`로 컴파일되는 것에 의존한다 — Postgres 레벨의 행 잠금으로 동시성이 보장된다(§16.3에서 상세).
 
+### 5.3.1 DB 장애 시 폴백 정책 (Phase 0.5, 확정)
+
+**[결정함]** Phase 0의 첫 구현은 "Postgres 실패 시 항상 조용히 파일로 폴백"이었다 — 이는 운영에서 위험하다(Postgres 장애가 quota/usage 상태의 조용한 손실로 이어질 수 있음). Phase 0.5에서 다음으로 교체했다(`server/db/fallbackPolicy.ts`):
+
+| DATABASE_URL | Postgres 호출 | NODE_ENV | ALLOW_FILE_DB_FALLBACK | 동작 |
+|---|---|---|---|---|
+| 미설정 | — | 무관 | 무관 | **파일 저장소 사용**(1.0 개발모드 호환 — 실패가 아니라 "DB 자체를 안 씀") |
+| 설정됨 | 성공 | 무관 | 무관 | Postgres 결과 사용 |
+| 설정됨 | 실패 | `production` | 무관 | **항상 `DatabaseUnavailableError` throw** — 파일 폴백 절대 금지 |
+| 설정됨 | 실패 | 그 외 | `true` | 파일로 폴백(경고 로그) |
+| 설정됨 | 실패 | 그 외 | 미설정/`true` 아님 | **`DatabaseUnavailableError` throw** — 개발환경도 명시적 옵트인 없이는 조용히 폴백하지 않음 |
+
+`DatabaseUnavailableError`는 `server/index.js`에서 HTTP 503 + `code: "DATABASE_UNAVAILABLE"`로 변환되어 클라이언트에 명시적으로 노출된다(전역 에러 미들웨어 + `/api/analyze`·`/api/ocr-screenshots`의 로컬 catch 양쪽에서 처리). `quotaRepository.ts`/`usageLogRepository.ts` 둘 다 동일 정책을 공유한다.
+
+**Repository 계층의 Phase 1 확장 원칙**: Phase 1에서 `analysisResultRepository`(위 스케치)를 실제로 구현할 때도 **동일한 `withFallbackPolicy()` 헬퍼를 재사용**한다 — 특히 결제 상태(`claimForPaidStage` 등)는 quota보다 훨씬 더 "조용한 손실 절대 불가" 요구가 강하므로, 이 헬퍼를 임의로 다시 구현하지 않는다.
+
 ### 5.4 호스팅 — 개발 중 현행 유지, 실결제 공개배포 직전 전환
 
 **[결정함]** 개발 단계에서는 **현행 Render free tier를 그대로 유지**한다. 콜드스타트·디스크 휘발성 문제는 개발 중에는 치명적이지 않다(Postgres를 쓰므로 디스크 휘발성 문제는 이미 §5.3에서 해소됨 — 남는 문제는 콜드스타트뿐이고, 이는 실사용자 트래픽이 없는 개발 단계에서는 감수 가능).
@@ -211,11 +227,20 @@ export const prismaAnalysisResultRepository: AnalysisResultRepository = {
 
 이로써 "언제 전환할지"는 확정됐다. "어느 플랜/어느 Postgres 벤더로 전환할지"는 그 시점의 트래픽 예상치에 따라 결정할 사안이라 지금 확정하지 않는다(§22.2에 예정된 결정으로 남긴다).
 
-**[결정 필요, 신규]** 개발 단계에서 쓸 **Postgres 인스턴스 자체는 지금 정해야 한다** — Prisma가 연결할 대상이 필요하기 때문이다. 후보: Render의 무료 Postgres 애드온(있다면 용량 제한 확인 필요), Neon/Supabase 무료 tier, 또는 로컬 Docker Postgres(팀 개발 환경마다 별도 실행). 이 문서는 "로컬 Docker Postgres(개발) + CI에서는 임시 Postgres 컨테이너"를 기본값으로 제안하되 최종 확정 필요.
+**[결정함]** 개발 단계 Postgres는 **로컬 Docker**로 확정됐다(`docker-compose.yml`). 마이그레이션은 `server/db/prisma/migrations/`에 커밋하고(오프라인에서 `prisma migrate diff --from-empty`로 생성, §23.5), 실제 DB에는 `npm run db:migrate:deploy`로 적용한다.
 
 ### 5.5 사용자 식별 전략 (쿼터 재설계) *(변경 없음)*
 
 서버 발급 HttpOnly 쿠키 세션 + IP 레이트리밋 + 결제 건은 별도 Unlock Token 트랙.
+
+### 5.6 CORS — allowlist로 확정 (Phase 0.5)
+
+**[결정함]** 1.0의 `cors()` 전면 허용(analysis_v1.md §4.13)을 폐기하고 `server/corsConfig.ts`의 allowlist로 교체했다.
+
+- Origin 헤더가 없는 요청(동일 출처 브라우저 탐색, curl, 서버 간 호출)은 항상 허용 — CORS는 애초에 브라우저의 교차 출처 fetch만 규율하므로 동일 출처 동작에는 영향이 없다.
+- 개발(`NODE_ENV !== 'production'`)에서는 Vite 기본 오리진(`http://localhost:5173`, `http://127.0.0.1:5173`)이 항상 포함된다.
+- 프로덕션에서는 `ALLOWED_ORIGINS`(콤마 구분) 환경변수에 명시된 오리진만 허용되고, 개발 오리진은 포함되지 않는다.
+- 거부는 에러가 아니라 `Access-Control-Allow-Origin` 헤더를 생략하는 방식(`callback(null, false)`)으로 처리한다 — 실제 브라우저는 이를 보고 프론트 JS의 응답 읽기를 차단하지만, 서버 자체는 여전히 200을 반환한다(요청을 아예 거부하는 게 아니라 "읽기 권한을 안 준다"는 CORS 스펙의 정상 동작).
 
 ---
 
@@ -343,6 +368,11 @@ CodeFeatures (전체 메시지량 + opportunity 카운트, §9.1)
 폐기 항목(성별 추정, 관계유형 5분류, 로컬 채점 함수)은 1차 개정과 동일.
 
 ### 8.3 LLM Signal Extractor *(변경 없음, strength 없음 + chunk 인지형 호출)*
+
+**[결정함, Phase 0.5 — v1 호환 코드의 비상속 원칙]** Phase 0에서 `server/analyze.js`(v1 호환 레거시 엔드포인트)에 두 가지를 추가했다: ① `max_tokens: 8192`(4096에서 상향 — 실측으로 확인된 v1 프롬프트의 JSON 중간 절단 버그 수정, §23.3) ② `messages.parse()` 구조화 출력이 실패하면 레거시 `messages.create()` + 정규식 파싱으로 재시도하는 안전망. **이 둘은 명시적으로 v1 전용 회귀방지 조치이며, v2 Relationship Engine(LLM Signal Extractor 이하 전체)은 이 값과 이 패턴을 그대로 물려받지 않는다.**
+
+- **`max_tokens`**: v2의 Signal Extraction 호출은 §14.1 스키마(청크당 최대 60개 signal, 필드가 짧고 개수 제한이 있음)를 쓰므로 v1의 프롬프트(단일 호출에 8개 가까운 장문 required 필드)와 출력 분량 자체가 다르다. v2는 자기 스키마 크기에 맞는 `max_tokens`를 Phase 1에서 새로 정하고 실측으로 검증한다 — `8192`를 기본값으로 복사해 오지 않는다.
+- **레거시 정규식 폴백**: v2는 "Evidence 없는 Signal은 점수에 반영하지 않는다"는 원칙(§11) 위에 서 있다. structured output 파싱이 실패했을 때 정규식으로 원문을 다시 긁어와 강제로 채워 넣는 것은 이 원칙과 정신이 어긋난다 — 파싱 실패는 "그 청크에서 추출된 Signal이 0개"로 처리하고 Evidence Validator·Score Engine이 그 사실을 있는 그대로 반영하게 한다(재시도는 허용하되, 정규식 기반 v1 방식의 폴백 구조 자체를 이식하지 않는다).
 
 ### 8.4 이후 단계
 
@@ -1054,14 +1084,68 @@ test("동일 count, 다른 opportunity → 다른 점수", () => {
 
 ## 22. [결정 필요] 남은 항목
 
-### 22.1 지금 결정이 필요한 항목
+### 22.0 3차 개정 — 최종 확정 (더 이상 열려 있지 않음)
 
-1. **개발용 Postgres 인스턴스 선택**(§5.4, 신규) — Render 무료 Postgres 애드온 / Neon·Supabase 무료 tier / 로컬 Docker 중 확정 필요. 이 문서는 "로컬 Docker(개발) + CI 임시 컨테이너"를 기본값으로 제안
-2. **사주 Shared Package 추출 일정**(§18.4) — 범위는 확정됐으나, `heydaystar` 프로젝트 코드 소유자·일정 조율이 남음
+**[결정함, 최종]** 이전 22.1의 2개 항목이 이번 개정으로 모두 확정됐다.
+
+1. **개발용 Postgres**: **로컬 Docker PostgreSQL + Prisma**로 확정. Raw conversation을 DB에 저장하지 않는 기존 원칙은 개발 환경에서도 동일하게 유지한다(개발용 DB라고 해서 원문 저장 금지 원칙이 완화되지 않음). 운영(프로덕션) DB/호스팅 벤더는 §5.4에 확정된 대로 실결제 공개배포 직전에 별도로 결정한다.
+2. **사주 Shared Package**: **지금 구현하지 않는다.** Phase 5 착수 시점에 HEYDAY STAR의 만세력 계산 + policy adapter + golden test만(§18.2 범위 그대로) shared package로 추출한다. **그 전까지 `~/Projects/heydaystar`의 기존 코드는 일절 수정하지 않는다** — Phase 0~4 어떤 작업에서도 해당 레포를 건드리지 않는다.
+
+이로써 이 프로젝트의 **설계 단계는 종료**되고 구현 단계로 넘어간다. 아래 22.1/22.2는 과거 기록으로만 남긴다(전부 해소됨 또는 의도적 연기).
+
+### 22.1 (해소됨) 과거 "지금 결정 필요" 목록
+
+~~1. 개발용 Postgres 인스턴스 선택~~ → §22.0-1에서 확정
+~~2. 사주 Shared Package 추출 일정~~ → §22.0-2에서 "Phase 5까지 착수하지 않음"으로 확정(일정 자체가 Phase 5 시작 시점으로 고정됨)
 
 ### 22.2 의도적으로 나중으로 미룬 항목 (지금 결정 불필요 — 예정된 시점에 재논의)
 
 1. **결제 Provider 선정** — Phase 3 착수 시점에 결정하기로 이미 확정됨(§16.3). 그 전까지는 `PaymentGateway` interface + mock으로 개발·테스트 진행
 2. **프로덕션 호스팅 플랜/Postgres 벤더**(구체적으로 어느 플랜) — 실결제 공개배포 직전에 결정하기로 이미 확정됨(§5.4)
 
-**이전 개정(§22, 10개 항목)에서 완전히 해소된 것**: DB 클라이언트(Prisma), 스크린샷 고지 문구(확정 텍스트 반영), PG 영수증 조회(미구현 확정), 사주 재사용 범위(확정), Funnel 도구(GA4 확정), Preview chunk 선택(최근 충분한 구간으로 확정), Preview Narrative 방식(템플릿 확정), Signal intensity(MVP 미도입 확정).
+**이전 개정들에서 완전히 해소된 것**: DB 클라이언트(Prisma), 개발용 DB(로컬 Docker), 스크린샷 고지 문구(확정 텍스트 반영), PG 영수증 조회(미구현 확정), 사주 재사용 범위·착수 시점(Phase 5로 확정, 그 전까지 HEYDAY STAR 코드 무변경), Funnel 도구(GA4 확정), Preview chunk 선택(최근 충분한 구간으로 확정), Preview Narrative 방식(템플릿 확정), Signal intensity(MVP 미도입 확정).
+
+---
+
+## 23. Phase 0 구현 기록
+
+**착수일**: 2026-09-12 · **브랜치**: `feat/v2-phase0-stabilize` (base: `main`@`dd6061a`, 보호 태그: `v1-stable`)
+
+### 23.1 안전조치
+- `git status` 확인 결과 미커밋 변경사항 없음(추적되지 않는 `docs/`, `.github/`만 존재)
+- `v1-stable` 태그를 `dd6061a`(직전 커밋)에 생성
+- `feat/v2-phase0-stabilize` 브랜치 생성, `main`은 무변경으로 보존
+
+### 23.2 완료된 작업
+- Postgres(로컬 Docker) + Prisma 개발환경 — `docker-compose.yml`, `server/db/prisma/schema.prisma`(DeviceQuota/AnalysisUsageLog만, Phase 1 엔진 스키마 제외), `prisma.config.ts`(Prisma 7 신규 설정 방식)
+- Repository foundation — `server/db/repositories/{quotaRepository,usageLogRepository}.ts`: Postgres 우선, 연결 실패 시 파일 기반 저장으로 폴백 *(이 정책은 Phase 0.5에서 §5.3.1의 명시적 정책으로 교체됨 — 아래 23.5 참조)*
+- `server/quota.js`: 저장 계층만 교체(비동기화), 쿼터 정책 로직 자체는 무변경
+- 개인정보 고지 문구를 확정 텍스트로 교체(`PrivacyBadge.jsx`)
+- `nameMap` 서버 전송 제거 — `anonymize.js`가 전송 직전 `scrubResultNames`(본문 내 실명)와 신규 `redactContactInfo`(전화번호/이메일)를 적용
+- Screenshot 원본: 처리 후 참조 명시적 해제(`content = null`), 디스크/로그 미기록 유지
+- 모바일 스크린샷 순서 변경 — 터치용 ▲▼ 버튼 추가(`ScreenshotImportPanel.jsx`)
+- `server/analyze.js`, `server/ocrScreenshots.js`: `output_config.format`(zod) 구조화 출력 적용, 레거시 정규식 파싱은 안전망으로만 유지
+- 사용량/비용 로깅 — 두 LLM 호출 지점에 `response.usage` 기록 배관 연결(Postgres 우선, 파일 폴백)
+- `og-image.png` 신규 생성(1200×630, 그라디언트 placeholder — 디자인 자산 아님, §23.4 참조)
+- `server/index.js`의 죽은 에러 미들웨어(구 30-38줄) 제거
+- TypeScript 설정 — `tsconfig.json`(`allowJs`+`checkJs:false`, `server/**` 한정), `tsx`로 서버 실행 전환. 파서 3종은 무변경
+
+### 23.3 실측으로 발견·수정한 실이슈 (설계 문서에는 없던 것)
+1. **Zod 스키마의 optional 필드 48개 → API가 24개 초과 거부**(`400 Schemas contains too many optional parameters`). 필드를 대부분 required로 변경해 해결.
+2. **`max_tokens: 4096`이 실제로 구조화 출력 JSON을 중간에 자름**(`Unterminated string in JSON`) — analysis_v1.md가 이론적으로 지적했던 위험이 실측에서 재현됨. `8192`로 상향 + `messages.parse()` 실패 시 레거시 `messages.create()`+정규식으로 재시도하는 안전망 추가로 해결. 수정 후 동일 입력으로 성공 확인(§23.4).
+
+### 23.4 검증 결과 — 별도 최종 보고 참조
+lint/test/build 결과, 회귀 확인 내역, 미해결 문제는 이 턴의 최종 사용자 보고에 상세 기재했다(문서 중복을 피하기 위해 여기서는 요약만 유지).
+
+### 23.5 Phase 0.5 — 조건부 승인 후속 작업
+
+Phase 0 조건부 승인에 따라 다음 6개 작업을 추가로 완료했다.
+
+1. **Postgres 실제 CRUD 검증 준비** — `prisma migrate diff --from-empty`로 오프라인 생성한 초기 마이그레이션(`server/db/prisma/migrations/20260912000000_init/`), `npm run db:verify`(migrate deploy + synthetic CRUD), `server/db/postgresCrud.integration.test.ts`(DATABASE_URL 없으면 자동 skip). Docker가 없는 이 샌드박스에서는 실행 자체는 못 했고 스크립트/테스트만 준비됨 — 실제 실행은 사용자 환경에서 필요(§ 최종 보고 "실제 PostgreSQL 검증에 필요한 정확한 실행 명령" 참조)
+2. **DB 폴백 정책 전면 수정** — §5.3.1에 정책 확정. `server/db/fallbackPolicy.ts`(`withFallbackPolicy`, `DatabaseUnavailableError`), `quotaRepository.ts`/`usageLogRepository.ts` 양쪽이 이를 사용하도록 교체, `server/index.js`가 이 에러를 503으로 변환. 3가지 시나리오(dev+플래그on/off, production) 전부 실제 서버 기동으로 라이브 검증함
+3. **CORS allowlist** — `server/corsConfig.ts`. 라이브 검증: 동일출처(헤더 없음)→허용, 허용 오리진→헤더 포함, 비허용 오리진→헤더 없이 200(브라우저가 차단)
+4. **Screenshot 모바일 리오더 컴포넌트 테스트** — `src/components/ScreenshotImportPanel.test.jsx`(React Testing Library + jsdom, ▲▼ 실제 클릭으로 순서 변경 + 경계 비활성화 검증)
+5. **v1 `max_tokens: 8192`의 비상속 원칙** — §8.3에 명시
+6. **v1 구조화출력 레거시 폴백의 비상속 원칙** — §8.3에 명시
+
+이번 작업으로 새로 추가된 devDependency: `@testing-library/react`, `jsdom`. 새 npm script: `db:migrate:deploy`, `db:verify`.

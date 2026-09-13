@@ -15,8 +15,13 @@ dist-ssr
 .env.*
 !.env.example
 
-# Server quota persistence (runtime data)
+# Server quota persistence (runtime data — file-based fallback when DATABASE_URL is unset/unreachable)
 server/data/quota.json
+server/data/usage-log.jsonl
+
+# Prisma (2.0) — generated client + local dev DB volume are not source
+server/db/prisma/client
+server/db/prisma/migrations/dev.db*
 
 # Editor directories and files
 .vscode/*

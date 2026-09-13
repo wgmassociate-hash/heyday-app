@@ -4,7 +4,12 @@ import {
   QUOTA_SHARE_BONUS_MAX,
   QUOTA_SHARE_COOLDOWN_MS,
 } from '../shared/quotaConfig.js'
-import { readStore, writeStore } from './quotaStore.js'
+// Storage moved to server/db/repositories/quotaRepository.ts (Postgres,
+// Prisma-first with a graceful fallback to the original file store —
+// see docs/implementation_plan_v2.md §5.3). The policy logic below
+// (KST reset, share-bonus cooldown, quota math) is unchanged from 1.0;
+// only the two storage calls are now async.
+import { getQuotaRepository } from './db/repositories/quotaRepository.ts'
 
 export function isQuotaDisabled() {
   return String(process.env.RATE_LIMIT_DISABLED || '').toLowerCase() === 'true'
@@ -19,25 +24,6 @@ export function getKstMidnightResetIso() {
   const [y, m, d] = kstDate.split('-').map(Number)
   const utcMs = Date.UTC(y, m - 1, d + 1, 0, 0, 0) - 9 * 60 * 60 * 1000
   return new Date(utcMs).toISOString()
-}
-
-function emptyRecord() {
-  return { used: 0, shareBonus: 0, lastShareAt: 0 }
-}
-
-function getDeviceRecord(store, deviceId, kstDate) {
-  const existing = store.devices[deviceId]
-  if (!existing || existing.date !== kstDate) return emptyRecord()
-  return {
-    used: Number(existing.used) || 0,
-    shareBonus: Number(existing.shareBonus) || 0,
-    lastShareAt: Number(existing.lastShareAt) || 0,
-  }
-}
-
-function saveDeviceRecord(store, deviceId, kstDate, record) {
-  store.devices[deviceId] = { date: kstDate, ...record }
-  writeStore(store)
 }
 
 export function buildQuotaStatus(record) {
@@ -76,20 +62,19 @@ export function getDisabledQuotaStatus() {
   }
 }
 
-export function getQuotaStatus(deviceId) {
+export async function getQuotaStatus(deviceId) {
   if (isQuotaDisabled()) return getDisabledQuotaStatus()
   const kstDate = getKstDateString()
-  const store = readStore()
-  const record = getDeviceRecord(store, deviceId, kstDate)
+  const record = await getQuotaRepository().getRecord(deviceId, kstDate)
   return buildQuotaStatus(record)
 }
 
-export function assertCanUseQuota(deviceId) {
+export async function assertCanUseQuota(deviceId) {
   if (isQuotaDisabled()) {
     return { ok: true, status: getDisabledQuotaStatus() }
   }
 
-  const status = getQuotaStatus(deviceId)
+  const status = await getQuotaStatus(deviceId)
   if (!status.canAnalyze) {
     return { ok: false, status, error: '오늘 AI 분석 횟수를 모두 사용했어요.' }
   }
@@ -97,14 +82,14 @@ export function assertCanUseQuota(deviceId) {
   return { ok: true, status }
 }
 
-export function consumeQuota(deviceId) {
+export async function consumeQuota(deviceId) {
   if (isQuotaDisabled()) {
     return { ok: true, status: getDisabledQuotaStatus() }
   }
 
   const kstDate = getKstDateString()
-  const store = readStore()
-  const record = getDeviceRecord(store, deviceId, kstDate)
+  const repo = getQuotaRepository()
+  const record = await repo.getRecord(deviceId, kstDate)
   const status = buildQuotaStatus(record)
 
   if (!status.canAnalyze) {
@@ -112,18 +97,18 @@ export function consumeQuota(deviceId) {
   }
 
   record.used += 1
-  saveDeviceRecord(store, deviceId, kstDate, record)
+  await repo.saveRecord(deviceId, kstDate, record)
   return { ok: true, status: buildQuotaStatus(record) }
 }
 
-export function grantShareBonus(deviceId) {
+export async function grantShareBonus(deviceId) {
   if (isQuotaDisabled()) {
     return { ok: true, status: getDisabledQuotaStatus() }
   }
 
   const kstDate = getKstDateString()
-  const store = readStore()
-  const record = getDeviceRecord(store, deviceId, kstDate)
+  const repo = getQuotaRepository()
+  const record = await repo.getRecord(deviceId, kstDate)
 
   if (record.shareBonus >= QUOTA_SHARE_BONUS_MAX) {
     return {
@@ -145,7 +130,7 @@ export function grantShareBonus(deviceId) {
 
   record.shareBonus += 1
   record.lastShareAt = now
-  saveDeviceRecord(store, deviceId, kstDate, record)
+  await repo.saveRecord(deviceId, kstDate, record)
   return { ok: true, status: buildQuotaStatus(record) }
 }
 

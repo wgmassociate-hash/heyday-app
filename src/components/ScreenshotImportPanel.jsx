@@ -53,6 +53,13 @@ export default function ScreenshotImportPanel({ onTextLoaded, onQuotaUpdate, onQ
     invalidateExtract()
   }
 
+  // 터치 기기에서는 HTML5 Drag&Drop이 동작하지 않으므로(analysis_v1.md §4.10-1),
+  // 위/아래 이동 버튼을 별도로 제공한다. moveItem()은 그대로 재사용.
+  const moveItemAt = (index, direction) => {
+    setItems((prev) => moveItem(prev, index, index + direction))
+    invalidateExtract()
+  }
+
   const handleExtract = async () => {
     if (items.length === 0) return
     setExtracting(true)
@@ -140,6 +147,26 @@ export default function ScreenshotImportPanel({ onTextLoaded, onQuotaUpdate, onQ
               >
                 <div className="absolute top-1 left-1 z-10 w-5 h-5 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center">
                   {index + 1}
+                </div>
+                <div className="absolute top-1 right-1 z-10 flex flex-col gap-1">
+                  <button
+                    type="button"
+                    aria-label="앞으로 이동"
+                    onClick={() => moveItemAt(index, -1)}
+                    disabled={index === 0}
+                    className="w-5 h-5 rounded-full bg-white/90 border border-violet-200 text-violet-700 text-[10px] leading-none flex items-center justify-center shadow-sm disabled:opacity-30"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="뒤로 이동"
+                    onClick={() => moveItemAt(index, 1)}
+                    disabled={index === items.length - 1}
+                    className="w-5 h-5 rounded-full bg-white/90 border border-violet-200 text-violet-700 text-[10px] leading-none flex items-center justify-center shadow-sm disabled:opacity-30"
+                  >
+                    ▼
+                  </button>
                 </div>
                 <img
                   src={item.previewUrl}

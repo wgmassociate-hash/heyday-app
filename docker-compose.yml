@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: heydaystar-kakao-analyzer-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: heydaystar
+      POSTGRES_PASSWORD: heydaystar_dev
+      POSTGRES_DB: heydaystar_kakao_analyzer
+    ports:
+      - "5432:5432"
+    volumes:
+      - heydaystar_kakao_analyzer_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U heydaystar -d heydaystar_kakao_analyzer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  heydaystar_kakao_analyzer_pgdata:

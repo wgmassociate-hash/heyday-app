@@ -1,0 +1,56 @@
+// Phase 0 scope only (docs/implementation_plan_v2.md §5.3, §20 Phase 0).
+// Does NOT include the Relationship Engine's AnalysisResult/chunk-plan schema —
+// that belongs to Phase 1 and is intentionally out of scope here.
+//
+// Dev DB: local Docker Postgres (docker-compose.yml). Raw conversation text is
+// never modeled here — only quota counters and usage/cost metadata, matching
+// the "원문 미저장" principle carried over from 1.0's server/quotaStore.js.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Mirrors the shape of the 1.0 server/data/quota.json record (server/quota.js),
+/// just moved from a flat file to Postgres so it survives restarts/redeploys.
+model DeviceQuota {
+  deviceId    String   @id @map("device_id")
+  /// KST calendar date string (e.g. "2026-09-12"). A row is treated as reset
+  /// once the current KST date no longer matches this field (server/quota.js
+  /// getDeviceRecord semantics, preserved as-is).
+  date        String
+  used        Int      @default(0)
+  shareBonus  Int      @default(0) @map("share_bonus")
+  /// Epoch ms of the last share-bonus grant, for the cooldown check.
+  lastShareAt BigInt   @default(0) @map("last_share_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("device_quotas")
+}
+
+/// One row per LLM call site (analyze / OCR), capturing response.usage so
+/// per-call cost is actually measurable (analysis_v1.md §4.8 — 1.0 had none
+/// of this instrumentation).
+model AnalysisUsageLog {
+  id           String   @id @default(cuid())
+  deviceId     String?  @map("device_id")
+  /// "analyze" | "ocr_screenshots" — which existing 1.0 endpoint this call came from.
+  callSite     String   @map("call_site")
+  model        String
+  inputTokens  Int      @map("input_tokens")
+  outputTokens Int      @map("output_tokens")
+  /// Estimated USD cost for this single call, from the pricing table in
+  /// server/db/pricing.ts. Not authoritative billing — a cost *estimate*.
+  costEstimate Float    @map("cost_estimate")
+  durationMs   Int      @map("duration_ms")
+  success      Boolean
+  errorMessage String?  @map("error_message")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("analysis_usage_logs")
+}

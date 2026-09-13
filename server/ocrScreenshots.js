@@ -1,6 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { OCR_SYSTEM_PROMPT } from './ocrPrompt.js'
 import { mergeOcrSegments } from '../src/utils/mergeOcrText.js'
+import { OcrResponseSchema } from './ocrSchema.ts'
+import { getUsageLogRepository } from './db/repositories/usageLogRepository.ts'
+import { estimateCostUsd } from './db/pricing.ts'
 
 const MAX_IMAGES = 6
 const MAX_B64_CHARS = 1_200_000
@@ -11,7 +15,9 @@ function getClient() {
   return new Anthropic({ apiKey })
 }
 
-function extractJson(text) {
+/** Fallback if structured-output parsing fails but the model still returned
+ * recognizable JSON as plain text — see server/analyze.js for the same pattern. */
+function extractJsonFallback(text) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/)
   let raw = fenced ? fenced[1].trim() : text.trim()
   const start = raw.indexOf('{')
@@ -29,8 +35,9 @@ function normalizeMediaType(type) {
 
 /**
  * @param {{ mediaType?: string, data: string }[]} images  base64 (no data: prefix)
+ * @param {string} [deviceId]
  */
-export async function extractChatFromScreenshots(images) {
+export async function extractChatFromScreenshots(images, deviceId) {
   if (!Array.isArray(images) || images.length === 0) {
     throw new Error('스크린샷이 없습니다.')
   }
@@ -51,8 +58,10 @@ export async function extractChatFromScreenshots(images) {
   const primaryModel = process.env.ANTHROPIC_OCR_MODEL || 'claude-haiku-4-5'
   const fallbackModel = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6'
 
+  // Images are held only in this in-memory `content` array for the duration
+  // of the request. Never written to disk or logged (docs/implementation_plan_v2.md §6.1).
   /** @type {import('@anthropic-ai/sdk').MessageParam['content']} */
-  const content = [
+  let content = [
     {
       type: 'text',
       text: `아래 ${images.length}장의 스크린샷은 사용자가 **대화 위에서 아래로** 스크롤하며 찍은 순서입니다.
@@ -75,59 +84,85 @@ export async function extractChatFromScreenshots(images) {
     })
   })
 
-  const request = () =>
-    client.messages.create({
-      model: primaryModel,
+  const outputFormat = zodOutputFormat(OcrResponseSchema)
+  const request = (model) =>
+    client.messages.parse({
+      model,
       max_tokens: 4096,
       system: OCR_SYSTEM_PROMPT,
       messages: [{ role: 'user', content }],
+      output_config: { format: outputFormat },
     })
 
+  const startedAt = Date.now()
   let message
   let ocrModel = primaryModel
+  let success = false
+  let errorMessage = null
+
   try {
-    message = await request()
+    try {
+      message = await request(primaryModel)
+    } catch (err) {
+      const notFound = /not_found|404|model/i.test(err?.message || '')
+      if (!notFound || primaryModel === fallbackModel) throw err
+      console.warn(`[ocr] ${primaryModel} 실패 → ${fallbackModel} 폴백`)
+      ocrModel = fallbackModel
+      message = await request(fallbackModel)
+    }
+
+    let parsed = message.parsed_output
+    if (!parsed) {
+      const block = message.content.find((b) => b.type === 'text')
+      if (!block?.text) throw new Error('OCR 응답이 비어 있습니다')
+      try {
+        parsed = extractJsonFallback(block.text)
+      } catch {
+        throw new Error('OCR 결과를 해석하지 못했습니다. 다시 시도해 주세요.')
+      }
+    }
+
+    const segments = (parsed.segments || [])
+      .map((s) => ({
+        index: Number(s.index) || 0,
+        text: String(s.text || '').trim(),
+      }))
+      .filter((s) => s.text)
+      .sort((a, b) => a.index - b.index)
+
+    if (segments.length === 0) {
+      throw new Error('스크린샷에서 대화를 읽지 못했습니다. 더 선명한 캡처를 사용해 주세요.')
+    }
+
+    const mergedText = mergeOcrSegments(segments)
+    success = true
+
+    return {
+      mergedText,
+      segments,
+      model: ocrModel,
+      usage: message.usage,
+    }
   } catch (err) {
-    const notFound = /not_found|404|model/i.test(err?.message || '')
-    if (!notFound || primaryModel === fallbackModel) throw err
-    console.warn(`[ocr] ${primaryModel} 실패 → ${fallbackModel} 폴백`)
-    ocrModel = fallbackModel
-    message = await client.messages.create({
-      model: fallbackModel,
-      max_tokens: 4096,
-      system: OCR_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content }],
-    })
-  }
-
-  const block = message.content.find((b) => b.type === 'text')
-  if (!block?.text) throw new Error('OCR 응답이 비어 있습니다')
-
-  let parsed
-  try {
-    parsed = extractJson(block.text)
-  } catch {
-    throw new Error('OCR 결과를 해석하지 못했습니다. 다시 시도해 주세요.')
-  }
-
-  const segments = (parsed.segments || [])
-    .map((s) => ({
-      index: Number(s.index) || 0,
-      text: String(s.text || '').trim(),
-    }))
-    .filter((s) => s.text)
-    .sort((a, b) => a.index - b.index)
-
-  if (segments.length === 0) {
-    throw new Error('스크린샷에서 대화를 읽지 못했습니다. 더 선명한 캡처를 사용해 주세요.')
-  }
-
-  const mergedText = mergeOcrSegments(segments)
-
-  return {
-    mergedText,
-    segments,
-    model: ocrModel,
-    usage: message.usage,
+    errorMessage = err?.message || String(err)
+    throw err
+  } finally {
+    // content held the raw image bytes; drop the reference as soon as we're done with it.
+    content = null
+    void getUsageLogRepository()
+      .record({
+        deviceId: deviceId ?? null,
+        callSite: 'ocr_screenshots',
+        model: ocrModel,
+        inputTokens: message?.usage?.input_tokens ?? 0,
+        outputTokens: message?.usage?.output_tokens ?? 0,
+        costEstimate: message?.usage
+          ? estimateCostUsd(ocrModel, message.usage.input_tokens, message.usage.output_tokens)
+          : 0,
+        durationMs: Date.now() - startedAt,
+        success,
+        errorMessage,
+      })
+      .catch((logErr) => console.warn('[usage-log]', logErr?.message || logErr))
   }
 }
