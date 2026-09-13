@@ -71,8 +71,48 @@ describe('extractCodeFeatures', () => {
     expect(aTowardB.targetMessageCount).toBe(1)
     expect(bTowardA.actorMessageCount).toBe(1)
     expect(bTowardA.targetMessageCount).toBe(2)
-    // B's opportunity to reciprocate is driven by A's question-like messages.
-    expect(bTowardA.pairOpportunityCount).toBe(2)
-    expect(aTowardB.pairOpportunityCount).toBe(0)
+    // Phase 1.1: OpportunityCounts no longer carries pairOpportunityCount —
+    // Reciprocity computes its own per-pairType opportunity (score/reciprocity.ts).
+    expect(aTowardB).not.toHaveProperty('pairOpportunityCount')
+  })
+
+  test('planProposalMessageCountBySpeaker counts plan/meetup-proposal-like messages', () => {
+    const messages: EnrichedMessage[] = [
+      msg({ id: 'm0', speakerId: 'A', text: '오늘 저녁에 만나자!' }),
+      msg({ id: 'm1', speakerId: 'B', text: '좋아 몇 시에 볼래?' }),
+      msg({ id: 'm2', speakerId: 'A', text: '그냥 일상 얘기' }),
+    ]
+    const features = extractCodeFeatures(messages)
+    expect(features.planProposalMessageCountBySpeaker.A).toBe(1)
+    expect(features.planProposalMessageCountBySpeaker.B).toBe(1)
+  })
+
+  test('turnAlternationRate is 1.0 for perfectly alternating speakers', () => {
+    const messages: EnrichedMessage[] = [
+      msg({ id: 'm0', speakerId: 'A', text: 'a' }),
+      msg({ id: 'm1', speakerId: 'B', text: 'b' }),
+      msg({ id: 'm2', speakerId: 'A', text: 'a' }),
+      msg({ id: 'm3', speakerId: 'B', text: 'b' }),
+    ]
+    expect(extractCodeFeatures(messages).turnAlternationRate).toBe(1)
+  })
+
+  test('turnAlternationRate is 0 when one speaker sends every message in one block', () => {
+    const messages: EnrichedMessage[] = [
+      msg({ id: 'm0', speakerId: 'A', text: 'a1' }),
+      msg({ id: 'm1', speakerId: 'A', text: 'a2' }),
+      msg({ id: 'm2', speakerId: 'A', text: 'a3' }),
+    ]
+    expect(extractCodeFeatures(messages).turnAlternationRate).toBe(0)
+  })
+
+  test('turnAlternationRate does not change just because the same pattern repeats over a longer conversation', () => {
+    const short: EnrichedMessage[] = Array.from({ length: 10 }, (_, i) =>
+      msg({ id: `m${i}`, speakerId: i % 2 === 0 ? 'A' : 'B', text: 'x' }),
+    )
+    const long: EnrichedMessage[] = Array.from({ length: 200 }, (_, i) =>
+      msg({ id: `m${i}`, speakerId: i % 2 === 0 ? 'A' : 'B', text: 'x' }),
+    )
+    expect(extractCodeFeatures(short).turnAlternationRate).toBe(extractCodeFeatures(long).turnAlternationRate)
   })
 })

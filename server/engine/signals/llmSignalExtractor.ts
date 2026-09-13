@@ -10,6 +10,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import type { EnrichedMessage } from '../messageModel/types.js'
+import type { ReciprocityPair } from './reciprocityTypes.js'
 import type { Chunk } from './chunker.js'
 import { buildSignalExtractionSystemPrompt } from './prompt.js'
 import { SignalExtractionResponseSchema } from './schema.js'
@@ -24,6 +25,7 @@ export interface ChunkExtractionResult {
   chunkId: string
   relationType: string
   signals: RelationshipSignal[]
+  reciprocityPairs: ReciprocityPair[]
   usage: ChunkExtractionUsage | null
   error: string | null
 }
@@ -80,6 +82,7 @@ export async function extractSignalsForChunk(
       chunkId: chunk.id,
       relationType: parsed.relationType,
       signals: parsed.signals,
+      reciprocityPairs: parsed.reciprocityPairs,
       usage: message.usage
         ? { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens }
         : null,
@@ -90,6 +93,7 @@ export async function extractSignalsForChunk(
       chunkId: chunk.id,
       relationType: 'ambiguous',
       signals: [],
+      reciprocityPairs: [],
       usage: null,
       error: err instanceof Error ? err.message : String(err),
     }

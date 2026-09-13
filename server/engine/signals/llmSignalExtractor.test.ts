@@ -1,6 +1,5 @@
-// Phase 1 — LLM Signal Extractor unit tests, using an injected fake client
-// (no real API key / network call, matching docs/implementation_plan_v2.md
-// §19.5's approach of testing against a mock rather than a real provider).
+// Phase 1 / 1.1 — LLM Signal Extractor unit tests, using an injected fake
+// client (no real API key / network call).
 import { describe, expect, test, vi } from 'vitest'
 import type { Chunk } from './chunker.js'
 import { extractSignalsForChunk, extractSignalsForChunks } from './llmSignalExtractor.js'
@@ -19,7 +18,7 @@ describe('extractSignalsForChunk', () => {
   test('does not inherit v1\'s max_tokens: 8192 default (§8.3 non-inheritance)', async () => {
     const parse = vi.fn(async (params: { max_tokens: number }) => {
       expect(params.max_tokens).not.toBe(8192)
-      return { parsed_output: { relationType: 'friendship', signals: [] }, usage: { input_tokens: 1, output_tokens: 1 } }
+      return { parsed_output: { relationType: 'friendship', signals: [], reciprocityPairs: [] }, usage: { input_tokens: 1, output_tokens: 1 } }
     })
     await extractSignalsForChunk(makeChunk('chunk_0'), { client: { messages: { parse } } as never })
     expect(parse).toHaveBeenCalledTimes(1)
@@ -36,7 +35,7 @@ describe('extractSignalsForChunk', () => {
       reason: '상대에게 안부를 물음',
     }
     const parse = vi.fn(async () => ({
-      parsed_output: { relationType: 'friendship', signals: [signal] },
+      parsed_output: { relationType: 'friendship', signals: [signal], reciprocityPairs: [] },
       usage: { input_tokens: 42, output_tokens: 7 },
     }))
     const result = await extractSignalsForChunk(makeChunk('chunk_0'), { client: { messages: { parse } } as never })
@@ -45,12 +44,30 @@ describe('extractSignalsForChunk', () => {
     expect(result.usage).toEqual({ inputTokens: 42, outputTokens: 7 })
   })
 
-  test('a parse failure yields zero signals, not a thrown error or a regex-salvage attempt', async () => {
+  test('returns parsed reciprocityPairs on success (Phase 1.1)', async () => {
+    const pair = {
+      pairType: 'question_response' as const,
+      initiatorSpeakerId: 'personA',
+      responderSpeakerId: 'personB',
+      triggerMessageIds: ['msg_0'],
+      responseMessageIds: ['msg_1'],
+      reason: '질문에 답함',
+    }
+    const parse = vi.fn(async () => ({
+      parsed_output: { relationType: 'friendship', signals: [], reciprocityPairs: [pair] },
+      usage: { input_tokens: 42, output_tokens: 7 },
+    }))
+    const result = await extractSignalsForChunk(makeChunk('chunk_0'), { client: { messages: { parse } } as never })
+    expect(result.reciprocityPairs).toEqual([pair])
+  })
+
+  test('a parse failure yields zero signals and zero pairs, not a thrown error or a regex-salvage attempt', async () => {
     const parse = vi.fn(async () => {
       throw new Error('structured output failed')
     })
     const result = await extractSignalsForChunk(makeChunk('chunk_0'), { client: { messages: { parse } } as never })
     expect(result.signals).toEqual([])
+    expect(result.reciprocityPairs).toEqual([])
     expect(result.error).toBe('structured output failed')
   })
 
@@ -65,7 +82,7 @@ describe('extractSignalsForChunk', () => {
 describe('extractSignalsForChunks', () => {
   test('runs every chunk and preserves chunkId on each result', async () => {
     const parse = vi.fn(async () => ({
-      parsed_output: { relationType: 'friendship', signals: [] },
+      parsed_output: { relationType: 'friendship', signals: [], reciprocityPairs: [] },
       usage: { input_tokens: 1, output_tokens: 1 },
     }))
     const results = await extractSignalsForChunks(

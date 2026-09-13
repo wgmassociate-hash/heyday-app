@@ -1,12 +1,13 @@
-// Phase 1 — Relationship Temperature (docs/prd_v2.md §9).
-// Signature intentionally has no `initiative`/`romance` parameter — the PRD
-// forbids folding either into Temperature (§9.3 "금지": Initiative/Romantic
-// Signal을 관계온도에 직접 합산하지 않음), and the type signature below is
-// what makes that a compile error to violate, not just a convention
-// (docs/implementation_plan_v2.md §12.3).
+// Phase 1 / 1.1 / 1.2 — Relationship Temperature (docs/prd_v2.md §9).
+// Signature intentionally has no `conversationInitiationRatio`/`romance`
+// parameter — the PRD forbids folding either into Temperature (§9.3 "금지":
+// Initiative/Romantic Signal을 관계온도에 직접 합산하지 않음), and the type
+// signature below is what makes that a compile error to violate, not just a
+// convention (docs/implementation_plan_v2.md §12.3).
 import type { CodeFeatures } from '../features/types.js'
+import { computeConfidence, weakerConfidence } from './confidence.js'
 import { clamp, harmonicMean } from './mathUtils.js'
-import type { Core4Result } from './types.js'
+import type { Core4Result, IndividualScore } from './types.js'
 
 const WEIGHTS = {
   mutualInterest: 0.4,
@@ -16,22 +17,44 @@ const WEIGHTS = {
 } as const
 
 /**
- * docs/prd_v2.md §9.3 lists InteractionEnergy candidates ("대화 세션
- * 지속성", "교대 발화", "일정 기간 내 상호 대화 빈도", "한쪽 독주가 아닌
- * 상호 참여") without a formula. Phase 1's first-cut reading: reward
- * balanced participation (nobody dominating the message count) and
- * conversations that recur across multiple sessions rather than being a
- * single burst. Both sub-scores and their blend are tunable placeholders.
+ * Phase 1.2 (audit finding #4): Temperature is built out of 4 weighted
+ * components, any of which can now be `null` (insufficient data). A null
+ * component is dropped and the remaining weights are renormalized — it is
+ * NOT treated as a 0, which would silently drag Temperature down just
+ * because one component happened to lack evidence. If too little of the
+ * total weight survives, Temperature itself becomes null/'insufficient'
+ * rather than reporting a number built on a sliver of the intended formula.
  */
-function computeInteractionEnergy(codeFeatures: CodeFeatures, speakerA: string, speakerB: string): number {
+const MIN_TEMPERATURE_WEIGHT_COVERAGE = 0.5
+
+/** Mutual Interest/Intimacy: null if EITHER side is null (a mutual measure
+ * can't be judged from just one side, docs/implementation_plan_v2.md audit
+ * finding #4). A real 0 on one side still combines normally via harmonicMean
+ * (which already returns 0 when either input is 0). */
+function combineMutual(a: IndividualScore, b: IndividualScore): IndividualScore {
+  if (a.score === null || b.score === null) return { score: null, confidence: 'insufficient' }
+  return { score: harmonicMean(a.score, b.score), confidence: weakerConfidence(a.confidence, b.confidence) }
+}
+
+/**
+ * Phase 1.1 formula (ParticipationBalance × 0.5 + TurnTakingRate × 0.5, both
+ * length-independent ratios) is unchanged. Phase 1.2 adds: if there isn't
+ * even enough total conversation to judge a turn-taking pattern from
+ * (opportunity = total messages), this is null/'insufficient' too, same as
+ * every other component — it no longer unconditionally reports a number.
+ */
+function computeInteractionEnergy(codeFeatures: CodeFeatures, speakerA: string, speakerB: string): IndividualScore {
   const countA = codeFeatures.messageCountBySpeaker[speakerA] ?? 0
   const countB = codeFeatures.messageCountBySpeaker[speakerB] ?? 0
-  const total = countA + countB
-  const participationBalance = total > 0 ? (2 * Math.min(countA, countB)) / total : 0
+  const totalMessages = countA + countB
 
-  const sessionActivity = clamp(codeFeatures.sessionCount * 5, 0, 100) / 100
+  const confidence = computeConfidence({ opportunity: totalMessages, messageCount: totalMessages, sessionCount: codeFeatures.sessionCount })
+  if (confidence === 'insufficient') return { score: null, confidence }
 
-  return clamp(Math.round((participationBalance * 0.6 + sessionActivity * 0.4) * 100), 0, 100)
+  const participationBalance = totalMessages > 0 ? clamp((2 * Math.min(countA, countB)) / totalMessages, 0, 1) : 0
+  const turnTakingRate = clamp(codeFeatures.turnAlternationRate, 0, 1)
+  const score = clamp(Math.round((participationBalance * 0.5 + turnTakingRate * 0.5) * 100), 0, 100)
+  return { score, confidence }
 }
 
 export function computeTemperature(
@@ -39,23 +62,37 @@ export function computeTemperature(
   codeFeatures: CodeFeatures,
   speakerA: string,
   speakerB: string,
-): number {
-  const mutualInterest = harmonicMean(
-    core4.interest.bySpeaker[speakerA]?.score ?? 0,
-    core4.interest.bySpeaker[speakerB]?.score ?? 0,
+): IndividualScore {
+  const mutualInterest = combineMutual(
+    core4.interest.bySpeaker[speakerA] ?? { score: null, confidence: 'insufficient' },
+    core4.interest.bySpeaker[speakerB] ?? { score: null, confidence: 'insufficient' },
   )
-  const mutualIntimacy = harmonicMean(
-    core4.intimacy.bySpeaker[speakerA]?.score ?? 0,
-    core4.intimacy.bySpeaker[speakerB]?.score ?? 0,
+  const mutualIntimacy = combineMutual(
+    core4.intimacy.bySpeaker[speakerA] ?? { score: null, confidence: 'insufficient' },
+    core4.intimacy.bySpeaker[speakerB] ?? { score: null, confidence: 'insufficient' },
   )
-  const reciprocity = core4.reciprocity.score
+  const reciprocity: IndividualScore = { score: core4.reciprocity.score, confidence: core4.reciprocity.confidence }
   const interactionEnergy = computeInteractionEnergy(codeFeatures, speakerA, speakerB)
 
-  const temperature =
-    mutualInterest * WEIGHTS.mutualInterest +
-    mutualIntimacy * WEIGHTS.mutualIntimacy +
-    reciprocity * WEIGHTS.reciprocity +
-    interactionEnergy * WEIGHTS.interactionEnergy
+  const components: Array<{ score: number | null; confidence: IndividualScore['confidence']; weight: number }> = [
+    { ...mutualInterest, weight: WEIGHTS.mutualInterest },
+    { ...mutualIntimacy, weight: WEIGHTS.mutualIntimacy },
+    { ...reciprocity, weight: WEIGHTS.reciprocity },
+    { ...interactionEnergy, weight: WEIGHTS.interactionEnergy },
+  ]
 
-  return Math.round(clamp(temperature, 0, 100))
+  const available = components.filter(
+    (c): c is { score: number; confidence: IndividualScore['confidence']; weight: number } => c.score !== null,
+  )
+  const availableWeight = available.reduce((sum, c) => sum + c.weight, 0)
+
+  if (availableWeight < MIN_TEMPERATURE_WEIGHT_COVERAGE) {
+    return { score: null, confidence: 'insufficient' }
+  }
+
+  const weightedSum = available.reduce((sum, c) => sum + c.score * c.weight, 0)
+  const temperature = Math.round(clamp(weightedSum / availableWeight, 0, 100))
+  const confidence = available.map((c) => c.confidence).reduce(weakerConfidence)
+
+  return { score: temperature, confidence }
 }

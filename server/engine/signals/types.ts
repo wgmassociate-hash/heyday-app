@@ -6,7 +6,13 @@
 // 만들지 않더라도 strength가 Score에 곱해지면 사실상 LLM이 점수를 조정하는
 // 구조가 된다." Every number in the final score comes from Score Engine
 // code (server/engine/score/**), never from this type.
-export type SignalCategory = 'interest' | 'intimacy' | 'reciprocity' | 'romance' | 'distancing'
+// Phase 1.1: 'reciprocity' removed from this enum. Reciprocity is no longer
+// tracked as an independent per-actor RelationshipSignal (the old mechanism
+// audited as "two independent rates + balance", not real pair tracking) —
+// it's now reciprocityTypes.ts's ReciprocityPair, which requires an explicit
+// trigger/response link between the two speakers instead of a standalone
+// category label.
+export type SignalCategory = 'interest' | 'intimacy' | 'romance' | 'distancing'
 export type SignalDirection = 'positive' | 'neutral' | 'negative'
 
 export interface RelationshipSignal {

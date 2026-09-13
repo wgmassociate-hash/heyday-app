@@ -12,12 +12,14 @@ import type { CoreScoreResult, ScoreEngineInput } from './types.js'
 import { WEIGHTS_VERSION } from './weights.js'
 
 export function runScoreEngine(input: ScoreEngineInput): CoreScoreResult {
-  const { codeFeatures, validatedSignals } = input
-  const core4 = computeCore4({ codeFeatures, validatedSignals })
+  const { codeFeatures, validatedSignals, reciprocityPairs } = input
+  const core4 = computeCore4({ codeFeatures, validatedSignals, reciprocityPairs })
 
   const [speakerA, speakerB] = codeFeatures.speakerIds
   const temperature =
-    speakerA && speakerB ? computeTemperature(core4, codeFeatures, speakerA, speakerB) : 0
+    speakerA && speakerB
+      ? computeTemperature(core4, codeFeatures, speakerA, speakerB)
+      : { score: null, confidence: 'insufficient' as const }
 
   const romance = computeRomanceScore(validatedSignals, codeFeatures)
   const position = computeRelationshipPosition(temperature, romance)

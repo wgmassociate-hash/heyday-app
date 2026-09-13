@@ -1,4 +1,4 @@
-// Phase 1 — Code Feature Extractor (docs/implementation_plan_v2.md §8.2, §9).
+// Phase 1 / 1.1 — Code Feature Extractor (docs/implementation_plan_v2.md §8.2, §9).
 // Pure counting over EnrichedMessage[]. No LLM SDK import allowed in this
 // directory — enforced by server/engine/importBoundary.test.ts (§10.2).
 import type { EnrichedMessage } from '../messageModel/types.js'
@@ -7,6 +7,9 @@ import type { CodeFeatures, OpportunityCounts, ReplyGapStat, TopicHit } from './
 
 const EMOJI_PATTERN = /[\u{1F300}-\u{1FAFF}]|[\u{2600}-\u{27BF}]/u
 const QUESTION_PATTERN = /[?？]/
+/** Coarse structural proxy for "proposes meeting up / making a plan" —
+ * same kind of heuristic as QUESTION_PATTERN, tunable. */
+const PLAN_PROPOSAL_PATTERN = /만나자|볼래|만날래|약속\s?(잡|하)|시간\s?돼|언제\s?(만나|볼까|시간)|보자(?!기)/
 
 function speakerIdsOf(messages: EnrichedMessage[]): string[] {
   const seen: string[] = []
@@ -60,6 +63,18 @@ function computeRestartOpportunityCount(messages: EnrichedMessage[]): number {
   return count
 }
 
+/** Fraction of adjacent message pairs where the speaker changed. A ratio,
+ * not a count, so it doesn't grow just because the conversation is long
+ * (Phase 1.1 fix for InteractionEnergy — see features/types.ts). */
+function computeTurnAlternationRate(messages: EnrichedMessage[]): number {
+  if (messages.length < 2) return 0
+  let alternations = 0
+  for (let i = 1; i < messages.length; i++) {
+    if (messages[i].speakerId !== messages[i - 1].speakerId) alternations += 1
+  }
+  return alternations / (messages.length - 1)
+}
+
 export function extractCodeFeatures(messages: EnrichedMessage[]): CodeFeatures {
   const speakerIds = speakerIdsOf(messages)
 
@@ -67,11 +82,13 @@ export function extractCodeFeatures(messages: EnrichedMessage[]): CodeFeatures {
   const turnInitiationCounts: Record<string, number> = {}
   const emojiCountBySpeaker: Record<string, number> = {}
   const questionMessageCountBySpeaker: Record<string, number> = {}
+  const planProposalMessageCountBySpeaker: Record<string, number> = {}
   for (const id of speakerIds) {
     messageCountBySpeaker[id] = 0
     turnInitiationCounts[id] = 0
     emojiCountBySpeaker[id] = 0
     questionMessageCountBySpeaker[id] = 0
+    planProposalMessageCountBySpeaker[id] = 0
   }
 
   for (const m of messages) {
@@ -79,6 +96,7 @@ export function extractCodeFeatures(messages: EnrichedMessage[]): CodeFeatures {
     if (m.isConversationStart || m.isConversationRestart) turnInitiationCounts[m.speakerId] += 1
     if (EMOJI_PATTERN.test(m.text)) emojiCountBySpeaker[m.speakerId] += 1
     if (QUESTION_PATTERN.test(m.text)) questionMessageCountBySpeaker[m.speakerId] += 1
+    if (PLAN_PROPOSAL_PATTERN.test(m.text)) planProposalMessageCountBySpeaker[m.speakerId] += 1
   }
 
   const emojiRatioBySpeaker: Record<string, number> = {}
@@ -95,6 +113,8 @@ export function extractCodeFeatures(messages: EnrichedMessage[]): CodeFeatures {
     replyGapStatsBySpeaker: computeReplyGapStats(messages, speakerIds),
     emojiRatioBySpeaker,
     questionMessageCountBySpeaker,
+    planProposalMessageCountBySpeaker,
+    turnAlternationRate: computeTurnAlternationRate(messages),
     topicHits: computeTopicHits(messages),
     sessionCount: new Set(messages.map((m) => m.sessionId).filter(Boolean)).size,
     restartOpportunityCount: computeRestartOpportunityCount(messages),
@@ -103,11 +123,8 @@ export function extractCodeFeatures(messages: EnrichedMessage[]): CodeFeatures {
 
 /**
  * Opportunity denominators for one (actor, target) direction of a pair —
- * the input `computeIndividualScore()` (score/core4.ts) needs per signalType
- * (§9.3). `pairOpportunityCount` uses `target`'s question-like messages as a
- * code-only proxy for "how many times did the target hand the actor a chance
- * to reciprocate" (§9.2) — a coarse approximation, not the same thing as an
- * LLM-detected reciprocity signal.
+ * used by Interest/Intimacy only (§9.3). Reciprocity has its own dedicated
+ * opportunity computation now — score/reciprocity.ts's computePairOpportunity().
  */
 export function computeOpportunities(
   features: CodeFeatures,
@@ -118,6 +135,5 @@ export function computeOpportunities(
     actorMessageCount: features.messageCountBySpeaker[actorSpeakerId] ?? 0,
     targetMessageCount: features.messageCountBySpeaker[targetSpeakerId] ?? 0,
     restartOpportunityCount: features.restartOpportunityCount,
-    pairOpportunityCount: features.questionMessageCountBySpeaker[targetSpeakerId] ?? 0,
   }
 }

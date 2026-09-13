@@ -382,6 +382,8 @@ Evidence Validator(§11), Score Engine(§9, §12), Trend/Turning Point(§13), Ro
 
 ## 9. Core 4 지표의 실제 구현 방식 — Opportunity Rate + Saturation (핵심 재설계)
 
+> **⚠️ Phase 1.2 기준 stale 표시**: 아래 §9.3(saturation 공식·opportunity floor)과 §9.5(Reciprocity의 `pairOpportunityCount`)는 이후 Phase 1.1/1.2에서 실제로 다르게 구현됐다. 최신 정확한 공식·타입·수치는 **§25**를 기준으로 삼는다. 이 섹션은 "왜 opportunity-rate 방식이 필요한가"라는 설계 논리 자체는 여전히 유효하므로 historical note로 남겨둔다.
+
 ### 9.1 왜 "가중치 × raw count"가 틀렸는가
 
 **[개정, 핵심]** 1·2차 개정까지의 설계는 `Σ count[signalType] × weight[signalType]`였다. 이것은 다음 두 가지를 왜곡한다:
@@ -405,6 +407,8 @@ signalType마다 "이 행동이 관찰될 수 있었던 기회의 총량"을 분
 이 값들은 §8.2에서 Code Feature Extractor가 전부 코드로 계산한다(LLM 관여 없음).
 
 ### 9.3 계산 함수 — deterministic, Score Engine 내부
+
+**[STALE — §25 참고]** 아래 스케치의 `MIN_OPPORTUNITY_FLOOR=5`(rate 억제용 floor), 정규화 안 된 `saturatedContribution`(rate=1에서 weight의 ~86.5%까지만 도달), `confidence`가 `signals.length`(evidenceCount)로 결정되는 부분은 전부 Phase 1.1/1.2에서 실제와 달라졌다. 아래는 최초 설계 스케치로만 유지한다.
 
 ```ts
 // server/engine/score/core4.ts
@@ -519,7 +523,9 @@ export function runScoreEngine(input: ScoreEngineInput): CoreScoreResult {
 
 Score Engine은 순수 함수다. Preview/Paid 두 번 실행되지만 각 실행은 독립적으로 결정적이다.
 
-### 12.2 계산 순서 *(변경 없음, 함수는 stage-agnostic)*
+### 12.2 계산 순서 *(변경 없음, 함수는 stage-agnostic — 단 아래 스케치는 §25 기준으로 파라미터가 늘었다)*
+
+**[STALE — §25 참고]** 아래 스케치는 `reciprocityPairs`를 입력받지 않고 `temperature`를 그냥 숫자로 반환하지만, 실제로는 `runScoreEngine()`이 `reciprocityPairs`도 함께 받고 `temperature`는 `{ score: number | null; confidence }`를 반환한다(Phase 1.2, §25.4).
 
 ```ts
 export function runScoreEngine(input: ScoreEngineInput): CoreScoreResult {
@@ -533,9 +539,9 @@ export function runScoreEngine(input: ScoreEngineInput): CoreScoreResult {
 
 `runScoreEngine()` 자체는 **Preview인지 Paid인지 모른다** — 어떤 stage에서 호출됐는지는 호출부(§16.2, §16.3)의 책임이다. 이 함수가 반환하는 `temperature`는 그냥 숫자다. **사용자에게 보여줄 필드 이름을 정하는 것은 이 함수의 일이 아니라 §12.4의 일이다.**
 
-### 12.3 Relationship Temperature 계산식 *(변경 없음)*
+### 12.3 Relationship Temperature 계산식 *(가중치는 변경 없음 — null 처리는 §25 참고)*
 
-`mutualInterest × 0.40 + mutualIntimacy × 0.25 + reciprocity × 0.25 + interactionEnergy × 0.10`. `computeTemperature()` 시그니처에 `initiative`/`romance` 파라미터 없음(금지 사항의 타입 강제).
+`mutualInterest × 0.40 + mutualIntimacy × 0.25 + reciprocity × 0.25 + interactionEnergy × 0.10`. `computeTemperature()` 시그니처에 `initiative`(현재 이름 `conversationInitiationRatio`)/`romance` 파라미터 없음(금지 사항의 타입 강제) — 이 부분은 변경 없음. **[STALE 아님, 그러나 보강]** Phase 1.2부터 4개 구성요소 중 일부가 `null`이면 나머지로 가중치를 재정규화하고, 커버리지가 너무 낮으면 Temperature 자체가 `null`이 된다 — §25.4 참고.
 
 ### 12.4 Preview와 Paid의 결과는 다른 이름을 가진다 (사용자 지침 8·C 핵심 반영)
 
@@ -671,7 +677,9 @@ Intent가 연애 관련일 때 우선 노출, family/work면 억제. 지수(Inde
 
 ## 15. JSON Schema
 
-### 15.1 Signal Extraction Schema *(변경 없음 — 이번 개정의 opportunity-rate 재설계는 Score Engine 내부 계산 방식만 바꾸고, LLM 출력 스키마 자체에는 영향이 없다)*
+### 15.1 Signal Extraction Schema
+
+**[STALE — §25 참고]** 아래 스케치의 `category` enum에 `"reciprocity"`가 남아 있으나, Phase 1.1부터 `RelationshipSignal.category`에서 `reciprocity`는 제거됐다(`interest`/`intimacy`/`romance`/`distancing` 4종만). 상호반응은 별도의 `reciprocityPairs` 배열(트리거/응답 messageId를 각각 명시하는 `ReciprocityPair`)로 보고한다 — §25.3 참고.
 
 ```json
 {
@@ -1181,3 +1189,189 @@ Phase 0 조건부 승인에 따라 다음 6개 작업을 추가로 완료했다.
 2. **Reciprocity의 정확한 수식** — PRD §8.4의 `Balance × EvidenceCoverage × InteractionQuality`를 `Balance × rawAvg`(opportunity-rate 점수 평균)로 단순화했다(PRD 스스로 "세부 수식은 실제 데이터 테스트 후 보정"이라 명시한 부분). 실제 대화 데이터로 보정 필요.
 3. **InteractionEnergy 공식** — PRD §9.3이 후보만 나열하고 공식을 정하지 않은 부분을 `참여 균형 0.6 + 세션 다양성 0.4`로 1차 구현했다(`temperature.ts`). 튜닝 대상.
 4. **Weight 값(weights.ts) 전체** — 코드 고정값이지만 전부 제품 휴리스틱이며 실측 데이터 없음. §19.2 invariant test는 "방향성"만 검증하고 정확한 숫자를 검증하지 않는다.
+
+> **후속 갱신**: 위 1~4 중 2번(Reciprocity 수식)은 Phase 1.1/1.2에서 완전히 재설계됐고(pair 기반, §25.3), 3번(InteractionEnergy)도 Phase 1.2에서 공식이 교체됐다(§25.4). 1번(Initiative)과 4번(Weight 값)은 Phase 1.2 시점에도 여전히 열려 있는 문제다.
+
+---
+
+## 25. Phase 1.1 / 1.2 — Score Calibration & Missing Evidence 최종 구현 기준
+
+**이 섹션이 §9/§12/§14보다 우선한다.** 아래는 실제 코드(`server/engine/score/**`, `server/engine/signals/**`)를 기준으로 작성했다. §9/§12/§14는 최초 설계 스케치로만 남겨두고 위쪽에 개별적으로 stale 표시를 해두었다.
+
+### 25.0 두 차례의 재감사로 무엇이 바뀌었는가
+
+- **Phase 1.1(Score Calibration)**: (1) saturation 함수가 rate=1에서도 weight의 100%에 도달하지 못하던 문제를 정규화로 수정, (2) opportunity floor(5)를 제거해 데이터가 적다는 이유만으로 점수 자체를 낮추지 않게 함(대신 confidence 분리), (3) Reciprocity를 "독립적인 두 rate + balance 배율" 방식에서 실제 trigger/response pair 추적 방식으로 재설계, (4) Initiative를 `conversationInitiationRatio`로 개명, (5) InteractionEnergy에서 세션 수 항을 제거.
+- **Phase 1.2(Missing Evidence & Calibration)**: (1) `score: number` 였던 모든 지표를 `score: number | null`로 바꿔 "opportunity 자체가 부족해 판단 불가"(null)와 "opportunity는 있었는데 관찰되지 않음"(실제 0)을 구분, (2) confidence 계산에서 evidenceCount(관찰된 개수)를 완전히 제거 — confidence는 오직 "얼마나 판단할 기회가 있었는가"만 본다, (3) Reciprocity의 한쪽 방향이 판단 불가일 때 그 방향과 overall을 모두 null로 만듦(억지 0 금지), (4) Relationship Temperature가 null인 구성요소를 0으로 취급하지 않고 남은 가중치로 재정규화, 커버리지가 너무 낮으면 Temperature 자체를 null로 반환, (5) `topic_expansion` pairType을 Reciprocity 점수 계산에서 제외(추출·Evidence 보존은 유지).
+- **Phase 1.3(Reciprocity Pair-Type Coverage Audit)**: Phase 1.2가 놓친 잔여 버그 하나를 수정. Directional Reciprocity가 opportunity=0인 pairType까지 weight denominator에 포함시키고 있어서, question_response 하나만 opportunity가 있고 나머지 4종은 opportunity=0인 대화가 100% 응답해도 점수가 34점(question_response의 weight share) 근방에 묶였다 — "관찰 불가능했던 차원"이 "관찰됐는데 실패함"처럼 취급된 것이다. opportunity=0 pairType을 분자·분모 양쪽에서 완전히 제외하도록 수정했고, directional confidence도 단순 평균 대신 `totalOpportunity`(관찰 가능했던 pairType들의 opportunity 합)와 `pairTypeCoverage`(관찰 가능했던 weight 비중)라는 두 축으로 재설계했다 — §25.3 참고.
+
+### 25.1 Metric Result 타입
+
+```ts
+// server/engine/score/types.ts
+export type Confidence = 'insufficient' | 'low' | 'medium' | 'high'
+
+export interface IndividualScore {
+  score: number | null   // null = opportunity 자체가 판단하기에 부족했음
+  confidence: Confidence // 'insufficient' ⇔ score === null, 항상 함께 움직인다
+}
+```
+
+`score`와 `confidence`는 완전히 분리된 계산 경로를 갖는다 — confidence가 score에 곱해지는 지점은 코드 어디에도 없다.
+
+### 25.2 Confidence 최종 규칙
+
+```ts
+// server/engine/score/confidence.ts
+const MIN_JUDGEABLE_OPPORTUNITY = 5   // 이 미만이면 score=null, confidence='insufficient'
+const HIGH_OPPORTUNITY = 15
+const HIGH_MESSAGE_COUNT = 40
+const HIGH_SESSION_COUNT = 2
+
+function computeConfidence({ opportunity, messageCount, sessionCount }): Confidence {
+  if (opportunity < MIN_JUDGEABLE_OPPORTUNITY) return 'insufficient'
+  const strong = opportunity >= HIGH_OPPORTUNITY && messageCount >= HIGH_MESSAGE_COUNT && sessionCount >= HIGH_SESSION_COUNT
+  if (strong) return 'high'
+  const medium = opportunity >= HIGH_OPPORTUNITY || (messageCount >= HIGH_MESSAGE_COUNT && sessionCount >= HIGH_SESSION_COUNT)
+  return medium ? 'medium' : 'low'
+}
+```
+
+`evidenceCount`(관찰된 signal/pair 개수)는 입력 파라미터에 아예 없다 — signal이 0개여도 opportunity·message·session이 충분하면 `medium`/`high`가 나올 수 있다. `MIN_JUDGEABLE_OPPORTUNITY=5`는 Phase 1이 쓰던 rate floor(5)와 같은 숫자를 재사용했지만 용도가 다르다: 이제는 rate 계산을 왜곡하지 않고(`rateFor`는 `max(opportunity,1)`만 씀), "점수를 보고할지 말지"만 결정한다.
+
+### 25.3 Reciprocity 최종 설계 — 5개 Pair + weight
+
+```ts
+// server/engine/signals/reciprocityTypes.ts
+type ReciprocityPairType =
+  'question_response' | 'mutual_disclosure' | 'emotional_empathy'
+  | 'joke_reciprocation' | 'plan_response' | 'topic_expansion'   // 6종 추출
+
+interface ReciprocityPair {
+  pairType: ReciprocityPairType
+  initiatorSpeakerId: string
+  responderSpeakerId: string
+  triggerMessageIds: string[]
+  responseMessageIds: string[]
+  reason: string
+}
+```
+
+Evidence Validator가 messageId 존재, `initiator≠responder`, 시간순서(모든 response index > 모든 trigger index), 인접범위(gap≤20메시지 & 동일 세션)를 검증한다.
+
+**점수 계산 대상은 5개 pairType뿐**(`topic_expansion` 제외, Phase 1.2 §25.0):
+
+| pairType | weight | opportunity(trigger) |
+|---|---:|---|
+| question_response | 34 | initiator의 `?` 포함 메시지 수 |
+| mutual_disclosure | 22 | initiator의 `self_disclosure` intimacy 시그널 수 |
+| emotional_empathy | 22 | initiator의 `vulnerable_emotion_share` intimacy 시그널 수 |
+| joke_reciprocation | 11 | initiator의 `playful_teasing_or_nickname` intimacy 시그널 수 |
+| plan_response | 11 | initiator의 plan-proposal 정규식 매칭 메시지 수 |
+
+(`topic_expansion`은 계속 추출·검증되어 Evidence로는 남지만, opportunity 정의가 없어 — initiator 전체 메시지 수를 쓰는 건 개념적으로 틀림 — 점수 weight에서는 제외했다. 전용 "새 화제 도입" 시그널이 생기면 재도입 예정, `weights.ts`의 TODO 참고.)
+
+최종 수식 (Phase 1.3 — Pair-Type Coverage Audit로 갱신):
+
+**[Phase 1.3에서 발견·수정된 버그]** 이전 구현은 opportunity=0인 pairType도 weight denominator에 그대로 포함시켰다. 그 결과 question_response(weight 34)만 opportunity가 있고 나머지 4종이 전부 opportunity=0인 대화에서, question_response에 100% 응답해도 점수가 34점 근방에 묶였다 — 관찰이 애초에 불가능했던 4개 차원이 "관찰됐는데 실패함"처럼 취급된 것. 지금은 opportunity=0인 pairType을 분자·분모 양쪽에서 완전히 제외한다.
+
+```
+방향별(initiator, responder 고정):
+  availablePairs = { cfg ∈ RECIPROCITY_PAIR_CONFIG(5종) | computePairOpportunity(cfg.pairType, initiator) > 0 }
+
+  if availablePairs가 비어있음 (전부 opportunity=0):
+    → { score: null, confidence: 'insufficient' }   // 판단 근거 자체가 없음
+
+  else:
+    total = Σ_{cfg ∈ availablePairs} saturatedContribution(rateFor(count_cfg, opportunity_cfg), cfg.weight)
+    availableWeightSum = Σ_{cfg ∈ availablePairs} cfg.weight
+    score = round(total / availableWeightSum × 100)
+
+    totalOpportunity = Σ_{cfg ∈ availablePairs} opportunity_cfg
+    pairTypeCoverage = availableWeightSum / 100   // 5종 전체 weight 대비 "관찰 가능했던" 비중
+    confidence = computeDirectionalConfidence({ totalOpportunity, pairTypeCoverage, messageCount, sessionCount })
+
+overall:
+  if (방향A.score === null || 방향B.score === null) → { score: null, confidence: 'insufficient' }
+  else → { score: round(harmonicMean(방향A.score, 방향B.score)), confidence: weaker(방향A.conf, 방향B.conf) }
+```
+
+`computeDirectionalConfidence`(신규, `score/reciprocity.ts`):
+
+```ts
+const HIGH_PAIRTYPE_COVERAGE = 0.5   // 전체 weight의 절반 이상을 커버해야 "넓다"고 봄
+
+function computeDirectionalConfidence({ totalOpportunity, pairTypeCoverage, messageCount, sessionCount }): Confidence {
+  const broadCoverage = pairTypeCoverage >= HIGH_PAIRTYPE_COVERAGE
+  const strong = broadCoverage && totalOpportunity >= HIGH_OPPORTUNITY && messageCount >= HIGH_MESSAGE_COUNT && sessionCount >= HIGH_SESSION_COUNT
+  if (strong) return 'high'
+  const medium = totalOpportunity >= HIGH_OPPORTUNITY || (messageCount >= HIGH_MESSAGE_COUNT && sessionCount >= HIGH_SESSION_COUNT)
+  return medium ? 'medium' : 'low'
+}
+```
+
+`HIGH_OPPORTUNITY`/`HIGH_MESSAGE_COUNT`/`HIGH_SESSION_COUNT`는 `score/confidence.ts`가 export하는 값(15/40/2)을 그대로 재사용한다 — 일반 Confidence와 다른 임계값 집합을 새로 만들지 않았다.
+
+세 가지가 타입/공식 레벨에서 구분된다:
+- **`opportunity=0`(그 pairType은 애초에 관찰 불가)** → 분자·분모 모두에서 제외. 전체 5종이 다 이러면 방향 자체가 `null`/`'insufficient'`.
+- **`opportunity>0`인데 관찰된 pair가 0개** → 분모에는 포함되고 분자에 0을 기여 — 진짜 "낮은 점수"로 반영(예: question_response만 100% 응답해도 mutual_disclosure가 opportunity는 있는데 무반응이면 100점이 아니라 그보다 낮게 나온다).
+- **좁은 커버리지(pairType 1~2개만 관찰 가능)** → 점수는 정상 계산되지만(0~100 스케일 그대로 사용), confidence는 `'medium'`을 넘지 못한다 — opportunity 총량이 아무리 많아도 마찬가지.
+
+### 25.4 Relationship Temperature — Missing-Metric 처리
+
+```
+components = [
+  { score: mutualInterest,   weight: 0.40 },   // 한쪽이라도 null이면 mutualInterest는 null
+  { score: mutualIntimacy,   weight: 0.25 },   // 위와 동일 원리
+  { score: reciprocity,      weight: 0.25 },   // §25.3의 overall
+  { score: interactionEnergy, weight: 0.10 },  // 아래 참고
+]
+available = components.filter(c => c.score !== null)
+availableWeight = Σ available.weight
+
+if (availableWeight < 0.5) return { score: null, confidence: 'insufficient' }   // MIN_TEMPERATURE_WEIGHT_COVERAGE = 0.5
+
+temperature = round(Σ available(score × weight) / availableWeight)
+confidence = available.confidence 중 가장 약한 것
+```
+
+`mutualInterest`/`mutualIntimacy`는 `harmonicMean(A,B)`인데, A 또는 B 중 하나라도 null이면 결과도 null(0으로 취급하지 않음) — 실제 0(둘 다 판단 가능했고 관찰된 게 0인 경우)은 여전히 harmonicMean이 정상적으로 0을 반환한다.
+
+**InteractionEnergy 최종 공식** (`temperature.ts`, 절대 `sessionCount × 5` 방식 아님):
+
+```
+ParticipationBalance = clamp(2·min(countA,countB)/(countA+countB), 0, 1)
+TurnTakingRate = (인접 메시지 쌍 중 화자가 바뀐 비율)   // features/codeFeatureExtractor.ts의 turnAlternationRate, 길이 무관
+opportunity(IE) = countA + countB (전체 메시지 수) → 5 미만이면 IE도 null
+IE = round(clamp((ParticipationBalance×0.5 + TurnTakingRate×0.5) × 100, 0, 100))
+```
+
+### 25.5 남은 문제 (Phase 2 전)
+
+1. `topic_expansion`의 opportunity를 대체할 전용 LLM 시그널이 아직 없음.
+2. `question_response`/`plan_response`의 opportunity가 여전히 정규식 코드 proxy(LLM 검증 아님).
+3. Confidence 임계값(5/15/40/2)과 Temperature 커버리지 임계값(0.5)이 튜닝되지 않음.
+4. Initiative(`conversationInitiationRatio`)는 여전히 코드 전용 — LLM 시그널 기여 여부 미정.
+5. Reciprocity 결합 공식(harmonicMean)은 이번에 새로 도입되어 실증 근거 없음.
+
+### 25.6 Calibration Scenario Fixture (§19.2 보강)
+
+`server/engine/score/calibrationScenarios.test.ts`에 5개 synthetic 관계 시나리오(양쪽 적극적/일방형/친구형/데이터 부족/opportunity는 충분하나 무반응)를 추가했다. 정확한 점수를 하드코딩하지 않고 순서 관계만 검증한다(예: 양쪽 적극적 시나리오의 Reciprocity/Temperature가 일방형 시나리오보다 높아야 함, 데이터 부족 시나리오는 낮은 점수가 아니라 `null`/`insufficient`여야 함).
+
+---
+
+## 26. Phase 2 Preview 성능 메모 (구현 전 기록만)
+
+Phase 1.2 감사 중 실제 Anthropic API로 80-message 샘플을 1회 호출(단일 chunk로 강제)해 측정한 결과:
+
+- **약 52.7초, 약 $0.067** (model: `claude-sonnet-4-6`, input 5,699 / output 3,325 tokens)
+
+이 수치는 **Free Preview에 그대로 쓸 수 없다** — Preview는 사용자가 결제 전에 기다리는 화면이고, Paid Deep과 같은 설정(같은 모델, 같은 청크 크기, 같은 프롬프트 분량)을 그대로 쓰면 무료 사용자 1명에게 $0.067·52초를 쓰는 셈이 되어 §16(2-Stage Compute)의 원래 취지("Preview는 비용 상한을 강하게 둔다")와 어긋난다.
+
+**Phase 2에서 별도로 검증해야 할 것** (지금은 구현하지 않음, 기록만):
+
+1. **최근 40~60 메시지만** 분석 대상으로 삼는 `selectPreviewWindow()`(§13.2)의 실제 latency/cost 재측정 — 80개가 아니라 40~60개 기준으로 다시 벤치마크.
+2. **Preview 전용 모델**을 별도 환경변수로 설정 가능하게(예: `ANTHROPIC_PREVIEW_MODEL` — 현재 `ANTHROPIC_MODEL`은 Paid/legacy 경로와 공유) — 더 저렴한 모델(예: haiku 계열)로 Preview 품질이 허용 가능한지 실측 필요.
+3. **더 짧은 structured output**을 Preview 전용으로 설계 — 지금의 Signal Extraction 스키마(청크당 최대 60 signals + 40 pairs)는 Paid Deep 기준이며, Preview는 더 적은 `maxItems`로 별도 스키마를 둘 수 있는지 검토.
+4. Preview 경로의 latency/cost를 실측해 **Paid Deep과 별도로 벤치마크 문서화**.
+
+**설계 원칙(지금 확정, 코드는 Phase 2에서)**: `llmSignalExtractor.ts`의 `LlmSignalExtractorOptions.model`/`maxOutputTokens`는 이미 호출부가 오버라이드할 수 있는 구조다 — Phase 2의 Preview 파이프라인은 이 옵션을 통해 Paid Deep과 **다른 model/token budget을 환경설정으로 분리**해서 넘기면 된다(새 인터페이스 설계 불필요, 기존 옵션을 다른 값으로 호출하기만 하면 됨). 단, 그 "다른 값"이 실제로 무엇이어야 하는지(모델명, 토큰 budget, 청크 크기)는 위 1~4번 실측 없이는 정할 수 없다.

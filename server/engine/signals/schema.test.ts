@@ -4,7 +4,7 @@
 // internal shape rather than eyeballing schema.ts, so this actually fails if
 // a future edit accidentally reintroduces a number field (e.g. a `strength`).
 import { describe, expect, test } from 'vitest'
-import { RelationshipSignalSchema, SignalExtractionResponseSchema } from './schema.js'
+import { ReciprocityPairSchema, RelationshipSignalSchema, SignalExtractionResponseSchema } from './schema.js'
 
 // Minimal structural type for what we need from zod v4's internal `_def` —
 // avoids depending on zod's (unstable) internal type exports.
@@ -38,7 +38,12 @@ describe('Signal Extraction schema has no numeric field', () => {
     expect(types).not.toContain('number')
   })
 
-  test('SignalExtractionResponseSchema (including the nested signals array)', () => {
+  test('ReciprocityPairSchema (Phase 1.1)', () => {
+    const types = collectTypes(ReciprocityPairSchema as unknown as ZodLike)
+    expect(types).not.toContain('number')
+  })
+
+  test('SignalExtractionResponseSchema (including the nested signals + reciprocityPairs arrays)', () => {
     const types = collectTypes(SignalExtractionResponseSchema as unknown as ZodLike)
     expect(types).not.toContain('number')
   })

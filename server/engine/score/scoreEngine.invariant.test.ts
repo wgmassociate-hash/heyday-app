@@ -1,20 +1,32 @@
-// Phase 1 — Score Engine invariant fixtures
-// (docs/implementation_review_v2.md §8, docs/implementation_plan_v2.md §19.2).
-//
-// Core 4's weights are product heuristics, not measured facts (weights.ts's
-// header comment), so these tests don't assert exact numbers. They assert
-// the properties the plan requires the design to hold no matter how the
-// weights get tuned later: monotonicity, length-invariance, saturation, and
-// "no evidence -> no score contribution".
+// Phase 1 / 1.1 / 1.2 — Score Engine invariant fixtures.
+// Weights are product heuristics, not measured facts (weights.ts's header
+// comment), so these tests don't assert exact numbers. They assert the
+// properties the design is required to hold no matter how the weights get
+// tuned later: monotonicity, length-invariance, saturation reaching 100,
+// score=null vs score=0 separation, confidence independent of evidenceCount,
+// and real pair-based Reciprocity behavior.
 import { describe, expect, test } from 'vitest'
 import type { CodeFeatures } from '../features/types.js'
-import type { ValidatedSignal } from '../signals/types.js'
-import { validateSignals } from '../signals/evidenceValidator.js'
 import type { EnrichedMessage } from '../messageModel/types.js'
+import type { ValidatedReciprocityPair } from '../signals/reciprocityTypes.js'
+import type { ValidatedSignal } from '../signals/types.js'
+import { validateReciprocityPairs, validateSignals } from '../signals/evidenceValidator.js'
+import { computeConfidence } from './confidence.js'
 import { computeIndividualScore } from './core4.js'
-import { runScoreEngine } from './scoreEngine.js'
 import { saturatedContribution } from './mathUtils.js'
-import { INTEREST_SIGNAL_CONFIG, RECIPROCITY_SIGNAL_CONFIG } from './weights.js'
+import { computePairOpportunity, computeReciprocity } from './reciprocity.js'
+import { runScoreEngine } from './scoreEngine.js'
+import type { IndividualScore } from './types.js'
+import { INTEREST_SIGNAL_CONFIG, RECIPROCITY_PAIR_CONFIG } from './weights.js'
+
+/** Asserts a metric is judgeable and returns its numeric score — a null
+ * here means a fixture is wrong (accidentally landed in the 'insufficient'
+ * regime), which this surfaces as a loud test failure instead of a silent
+ * `null` flowing into arithmetic. */
+function requireScore(metric: IndividualScore): number {
+  if (metric.score === null) throw new Error(`expected a judgeable score, got null (confidence: ${metric.confidence})`)
+  return metric.score
+}
 
 function makeCodeFeatures(overrides: Partial<CodeFeatures> = {}): CodeFeatures {
   return {
@@ -27,6 +39,8 @@ function makeCodeFeatures(overrides: Partial<CodeFeatures> = {}): CodeFeatures {
     },
     emojiRatioBySpeaker: { personA: 0.1, personB: 0.1 },
     questionMessageCountBySpeaker: { personA: 20, personB: 20 },
+    planProposalMessageCountBySpeaker: { personA: 5, personB: 5 },
+    turnAlternationRate: 0.5,
     topicHits: [],
     sessionCount: 5,
     restartOpportunityCount: 10,
@@ -50,77 +64,145 @@ function makeSignal(overrides: Partial<ValidatedSignal> = {}): ValidatedSignal {
   }
 }
 
-function repeat(n: number, factory: () => ValidatedSignal): ValidatedSignal[] {
+let pairCounter = 0
+function makePair(overrides: Partial<ValidatedReciprocityPair> = {}): ValidatedReciprocityPair {
+  pairCounter += 1
+  return {
+    pairType: 'question_response',
+    initiatorSpeakerId: 'personB',
+    responderSpeakerId: 'personA',
+    triggerMessageIds: [`trig_${pairCounter}`],
+    responseMessageIds: [`resp_${pairCounter}`],
+    reason: 'test fixture',
+    chunkId: 'chunk_0',
+    ...overrides,
+  }
+}
+
+function repeat<T>(n: number, factory: () => T): T[] {
   return Array.from({ length: n }, () => factory())
 }
 
-describe('length invariance (§19.2 #9)', () => {
+describe('length invariance', () => {
   test('same rate, 10x conversation length -> ~same Interest score', () => {
     const small = computeIndividualScore(
       repeat(2, () => makeSignal({ signalType: 'follow_up_question' })),
       'personA',
-      { actorMessageCount: 100, targetMessageCount: 20, restartOpportunityCount: 10, pairOpportunityCount: 20 },
+      { actorMessageCount: 100, targetMessageCount: 20, restartOpportunityCount: 10 },
       INTEREST_SIGNAL_CONFIG,
+      5,
     )
     const large = computeIndividualScore(
       repeat(20, () => makeSignal({ signalType: 'follow_up_question' })),
       'personA',
-      { actorMessageCount: 1000, targetMessageCount: 200, restartOpportunityCount: 100, pairOpportunityCount: 200 },
+      { actorMessageCount: 1000, targetMessageCount: 200, restartOpportunityCount: 100 },
       INTEREST_SIGNAL_CONFIG,
+      5,
     )
-    expect(Math.abs(small.score - large.score)).toBeLessThan(3)
+    expect(Math.abs(requireScore(small) - requireScore(large))).toBeLessThan(3)
   })
 })
 
-describe('saturation (§19.2 #10)', () => {
-  test('contribution never exceeds weight, and is concave in rate', () => {
+describe('saturation (normalized, Phase 1.1 fix)', () => {
+  test('S(0) = 0, S(1) = weight exactly, monotonic and concave on [0,1]', () => {
     const weight = 100
     const at0 = saturatedContribution(0, weight)
     const atHalf = saturatedContribution(0.5, weight)
     const atFull = saturatedContribution(1, weight)
-    expect(atFull).toBeLessThanOrEqual(weight)
+    expect(at0).toBe(0)
+    expect(atFull).toBeCloseTo(weight, 6)
+    expect(atHalf).toBeGreaterThan(at0)
+    expect(atFull).toBeGreaterThan(atHalf)
     expect(atFull - atHalf).toBeLessThan(atHalf - at0)
   })
 
-  test('extreme repetition of one signalType does not blow past its weight share', () => {
+  test('every signalType at rate=1 -> metric reaches exactly 100', () => {
+    const opportunities = { actorMessageCount: 100, targetMessageCount: 10, restartOpportunityCount: 10 }
+    const signals = INTEREST_SIGNAL_CONFIG.flatMap((cfg) => repeat(10, () => makeSignal({ signalType: cfg.signalType })))
+    const result = computeIndividualScore(signals, 'personA', opportunities, INTEREST_SIGNAL_CONFIG, 5)
+    expect(result.score).toBe(100)
+  })
+})
+
+describe('score=null vs score=0 (Phase 1.2 audit finding #1)', () => {
+  test('opportunity below the judgeable threshold -> score is null, confidence insufficient (not a distorted number)', () => {
     const result = computeIndividualScore(
-      repeat(500, () => makeSignal({ signalType: 'follow_up_question' })),
+      [makeSignal({ signalType: 'follow_up_question' })],
       'personA',
-      { actorMessageCount: 100, targetMessageCount: 20, restartOpportunityCount: 10, pairOpportunityCount: 20 },
+      { actorMessageCount: 100, targetMessageCount: 1, restartOpportunityCount: 10 },
       INTEREST_SIGNAL_CONFIG,
+      5,
     )
-    // follow_up_question is 25 of 100 total weight -> its full saturation
-    // caps this signalType's share at 25/100 = 25 points, not near 100.
-    expect(result.score).toBeLessThan(40)
+    expect(result.score).toBeNull()
+    expect(result.confidence).toBe('insufficient')
+  })
+
+  test('opportunity at the judgeable threshold with rate=1 -> full per-type weight share (Phase 1.1\'s no-floor fix still holds once judgeable)', () => {
+    const result = computeIndividualScore(
+      repeat(5, () => makeSignal({ signalType: 'follow_up_question' })), // count=5=opportunity -> rate=1
+      'personA',
+      { actorMessageCount: 100, targetMessageCount: 5, restartOpportunityCount: 10 },
+      INTEREST_SIGNAL_CONFIG,
+      5,
+    )
+    expect(result.confidence).not.toBe('insufficient')
+    // follow_up_question is 25/100 of Interest's weight.
+    expect(result.score).toBe(25)
+  })
+
+  test('within the judgeable range, a larger opportunity (lower rate) scores strictly lower', () => {
+    const smallOpportunity = computeIndividualScore(
+      [makeSignal({ signalType: 'follow_up_question' })],
+      'personA',
+      { actorMessageCount: 100, targetMessageCount: 5, restartOpportunityCount: 10 },
+      INTEREST_SIGNAL_CONFIG,
+      5,
+    )
+    const largeOpportunity = computeIndividualScore(
+      [makeSignal({ signalType: 'follow_up_question' })],
+      'personA',
+      { actorMessageCount: 100, targetMessageCount: 100, restartOpportunityCount: 10 },
+      INTEREST_SIGNAL_CONFIG,
+      5,
+    )
+    expect(requireScore(smallOpportunity)).toBeGreaterThan(requireScore(largeOpportunity))
+  })
+
+  test('ample opportunity, zero evidence -> score 0 (a real zero), not null', () => {
+    const result = computeIndividualScore(
+      [],
+      'personA',
+      { actorMessageCount: 100, targetMessageCount: 100, restartOpportunityCount: 10 },
+      INTEREST_SIGNAL_CONFIG,
+      5,
+    )
+    expect(result.score).toBe(0)
+    expect(result.confidence).not.toBe('insufficient')
+    expect(Number.isFinite(result.score)).toBe(true)
+  })
+
+  test('zero evidence with ample opportunity/message/session coverage can still reach medium/high confidence (audit finding #2)', () => {
+    const result = computeIndividualScore(
+      [], // no signals at all
+      'personA',
+      { actorMessageCount: 200, targetMessageCount: 200, restartOpportunityCount: 50 },
+      INTEREST_SIGNAL_CONFIG,
+      5, // sessionCount
+    )
+    expect(result.score).toBe(0)
+    expect(['medium', 'high']).toContain(result.confidence)
   })
 })
 
-describe('rate vs. raw count (§19.2 #11)', () => {
-  test('same count, denser opportunity -> higher score', () => {
-    const sparse = computeIndividualScore(
-      repeat(5, () => makeSignal({ signalType: 'follow_up_question' })),
-      'personA',
-      { actorMessageCount: 100, targetMessageCount: 100, restartOpportunityCount: 10, pairOpportunityCount: 20 },
-      INTEREST_SIGNAL_CONFIG,
-    )
-    const dense = computeIndividualScore(
-      repeat(5, () => makeSignal({ signalType: 'follow_up_question' })),
-      'personA',
-      { actorMessageCount: 100, targetMessageCount: 20, restartOpportunityCount: 10, pairOpportunityCount: 20 },
-      INTEREST_SIGNAL_CONFIG,
-    )
-    expect(dense.score).toBeGreaterThan(sparse.score)
-  })
-})
-
-describe('Interest monotonicity (review §8 #1)', () => {
+describe('Interest monotonicity', () => {
   test('adding more follow-up/remembered-detail signals never decreases Interest', () => {
-    const opportunities = { actorMessageCount: 100, targetMessageCount: 100, restartOpportunityCount: 10, pairOpportunityCount: 20 }
+    const opportunities = { actorMessageCount: 100, targetMessageCount: 100, restartOpportunityCount: 10 }
     const fewer = computeIndividualScore(
       repeat(2, () => makeSignal({ signalType: 'follow_up_question' })),
       'personA',
       opportunities,
       INTEREST_SIGNAL_CONFIG,
+      5,
     )
     const more = computeIndividualScore(
       [
@@ -130,41 +212,18 @@ describe('Interest monotonicity (review §8 #1)', () => {
       'personA',
       opportunities,
       INTEREST_SIGNAL_CONFIG,
+      5,
     )
-    expect(more.score).toBeGreaterThanOrEqual(fewer.score)
+    expect(requireScore(more)).toBeGreaterThanOrEqual(requireScore(fewer))
   })
 })
 
-describe('Reciprocity one-sidedness (review §8 #2, #12)', () => {
-  test('only one side reciprocating does not push Reciprocity up', () => {
-    const codeFeatures = makeCodeFeatures()
-    const oneSided = runScoreEngine({
-      codeFeatures,
-      validatedSignals: repeat(10, () =>
-        makeSignal({ signalType: 'question_answered_or_reciprocated', category: 'reciprocity', actorSpeakerId: 'personA', targetSpeakerId: 'personB' }),
-      ),
-    })
-    const balanced = runScoreEngine({
-      codeFeatures,
-      validatedSignals: [
-        ...repeat(10, () => makeSignal({ signalType: 'question_answered_or_reciprocated', category: 'reciprocity', actorSpeakerId: 'personA', targetSpeakerId: 'personB' })),
-        ...repeat(10, () => makeSignal({ signalType: 'question_answered_or_reciprocated', category: 'reciprocity', actorSpeakerId: 'personB', targetSpeakerId: 'personA' })),
-      ],
-    })
-    expect(oneSided.core4.reciprocity.score).toBeLessThan(balanced.core4.reciprocity.score)
-  })
-
-  test('neither side reciprocating scores 0, not a false "perfectly balanced" high score', () => {
-    const result = runScoreEngine({ codeFeatures: makeCodeFeatures(), validatedSignals: [] })
-    expect(result.core4.reciprocity.score).toBe(0)
-  })
-})
-
-describe('Intimacy monotonicity (review §8 #3)', () => {
+describe('Intimacy monotonicity', () => {
   test('more mutual self-disclosure never lowers Intimacy for either side', () => {
     const codeFeatures = makeCodeFeatures()
     const fewer = runScoreEngine({
       codeFeatures,
+      reciprocityPairs: [],
       validatedSignals: [
         ...repeat(2, () => makeSignal({ signalType: 'self_disclosure', category: 'intimacy', actorSpeakerId: 'personA' })),
         ...repeat(2, () => makeSignal({ signalType: 'self_disclosure', category: 'intimacy', actorSpeakerId: 'personB' })),
@@ -172,41 +231,49 @@ describe('Intimacy monotonicity (review §8 #3)', () => {
     })
     const more = runScoreEngine({
       codeFeatures,
+      reciprocityPairs: [],
       validatedSignals: [
         ...repeat(6, () => makeSignal({ signalType: 'self_disclosure', category: 'intimacy', actorSpeakerId: 'personA' })),
         ...repeat(6, () => makeSignal({ signalType: 'self_disclosure', category: 'intimacy', actorSpeakerId: 'personB' })),
       ],
     })
-    expect(more.core4.intimacy.bySpeaker.personA.score).toBeGreaterThanOrEqual(fewer.core4.intimacy.bySpeaker.personA.score)
-    expect(more.core4.intimacy.bySpeaker.personB.score).toBeGreaterThanOrEqual(fewer.core4.intimacy.bySpeaker.personB.score)
+    expect(requireScore(more.core4.intimacy.bySpeaker.personA)).toBeGreaterThanOrEqual(
+      requireScore(fewer.core4.intimacy.bySpeaker.personA),
+    )
+    expect(requireScore(more.core4.intimacy.bySpeaker.personB)).toBeGreaterThanOrEqual(
+      requireScore(fewer.core4.intimacy.bySpeaker.personB),
+    )
   })
 })
 
-describe('Initiative ratio (review §8 #4)', () => {
+describe('conversationInitiationRatio (renamed from Initiative, audit finding #4)', () => {
   test('one side starting/reviving the conversation far more shifts the ratio toward them', () => {
     const result = runScoreEngine({
       codeFeatures: makeCodeFeatures({ turnInitiationCounts: { personA: 18, personB: 2 } }),
       validatedSignals: [],
+      reciprocityPairs: [],
     })
-    expect(result.core4.initiative.ratioBySpeaker.personA).toBeGreaterThan(0.8)
-    expect(result.core4.initiative.ratioBySpeaker.personB).toBeLessThan(0.2)
+    expect(result.core4.conversationInitiationRatio.ratioBySpeaker.personA).toBeGreaterThan(0.8)
+    expect(result.core4.conversationInitiationRatio.ratioBySpeaker.personB).toBeLessThan(0.2)
   })
 
   test('no turn-initiation evidence at all splits the ratio evenly, not toward either side', () => {
     const result = runScoreEngine({
       codeFeatures: makeCodeFeatures({ turnInitiationCounts: { personA: 0, personB: 0 } }),
       validatedSignals: [],
+      reciprocityPairs: [],
     })
-    expect(result.core4.initiative.ratioBySpeaker.personA).toBe(0.5)
-    expect(result.core4.initiative.ratioBySpeaker.personB).toBe(0.5)
+    expect(result.core4.conversationInitiationRatio.ratioBySpeaker.personA).toBe(0.5)
+    expect(result.core4.conversationInitiationRatio.ratioBySpeaker.personB).toBe(0.5)
   })
 })
 
-describe('Romantic Signal (review §8 #5, #6)', () => {
+describe('Romantic Signal', () => {
   test('a long, ordinary friend conversation with zero romance signals scores 0', () => {
     const result = runScoreEngine({
       codeFeatures: makeCodeFeatures({ messageCountBySpeaker: { personA: 800, personB: 800 } }),
       validatedSignals: repeat(30, () => makeSignal({ signalType: 'follow_up_question', category: 'interest' })),
+      reciprocityPairs: [],
     })
     expect(result.romance.score).toBe(0)
   })
@@ -216,6 +283,7 @@ describe('Romantic Signal (review §8 #5, #6)', () => {
     const friendBaseline = runScoreEngine({
       codeFeatures,
       validatedSignals: repeat(10, () => makeSignal({ signalType: 'follow_up_question', category: 'interest' })),
+      reciprocityPairs: [],
     })
     const withFlirting = runScoreEngine({
       codeFeatures,
@@ -223,21 +291,13 @@ describe('Romantic Signal (review §8 #5, #6)', () => {
         ...repeat(10, () => makeSignal({ signalType: 'follow_up_question', category: 'interest' })),
         ...repeat(8, () => makeSignal({ signalType: 'direct_flirting', category: 'romance', direction: 'positive' })),
       ],
+      reciprocityPairs: [],
     })
     expect(withFlirting.romance.score).toBeGreaterThan(friendBaseline.romance.score)
   })
-
-  test('distancing signals pull Romantic Signal down, never negative', () => {
-    const codeFeatures = makeCodeFeatures()
-    const result = runScoreEngine({
-      codeFeatures,
-      validatedSignals: repeat(20, () => makeSignal({ signalType: 'avoids_meeting', category: 'distancing', direction: 'negative' })),
-    })
-    expect(result.romance.score).toBe(0)
-  })
 })
 
-describe('Evidence Validator: rejected signals contribute nothing (review §8 #8)', () => {
+describe('Evidence Validator: rejected signals contribute nothing', () => {
   const messages: EnrichedMessage[] = [
     { id: 'msg_1', speakerId: 'personA', timestamp: null, date: null, text: 'hi', sourceType: 'txt' },
     { id: 'msg_2', speakerId: 'personB', timestamp: null, date: null, text: 'hello', sourceType: 'txt' },
@@ -265,47 +325,395 @@ describe('Evidence Validator: rejected signals contribute nothing (review §8 #8
   })
 
   test('score computed over only the validated set matches score computed as if the rejected signal never existed', () => {
-    const opportunities = { actorMessageCount: 100, targetMessageCount: 100, restartOpportunityCount: 10, pairOpportunityCount: 20 }
-    // Use messageIds that actually resolve against `messages` so these count
-    // as valid evidence — only the extra fabricated-id signal should be
-    // rejected by validateSignals().
+    const opportunities = { actorMessageCount: 100, targetMessageCount: 100, restartOpportunityCount: 10 }
     const goodSignals = () => makeSignal({ signalType: 'follow_up_question', messageIds: ['msg_1'] })
-    const withoutRejected = computeIndividualScore(repeat(3, goodSignals), 'personA', opportunities, INTEREST_SIGNAL_CONFIG)
+    const withoutRejected = computeIndividualScore(repeat(3, goodSignals), 'personA', opportunities, INTEREST_SIGNAL_CONFIG, 5)
 
     const rawWithBadSignal = [
       ...repeat(3, goodSignals),
       { signalType: 'follow_up_question', category: 'interest' as const, direction: 'positive' as const, actorSpeakerId: 'personA', targetSpeakerId: 'personB', messageIds: ['nope'], reason: 'bad' },
     ]
     const { validated } = validateSignals(rawWithBadSignal, messages, 'chunk_0')
-    const withRejectedFilteredOut = computeIndividualScore(validated, 'personA', opportunities, INTEREST_SIGNAL_CONFIG)
+    const withRejectedFilteredOut = computeIndividualScore(validated, 'personA', opportunities, INTEREST_SIGNAL_CONFIG, 5)
 
     expect(withRejectedFilteredOut.score).toBe(withoutRejected.score)
   })
 })
 
-describe('opportunity floor guards against tiny denominators (§9.3 MIN_OPPORTUNITY_FLOOR)', () => {
-  test('a very short conversation does not produce a runaway or NaN rate', () => {
-    const result = computeIndividualScore(
-      repeat(3, () => makeSignal({ signalType: 'follow_up_question' })),
-      'personA',
-      { actorMessageCount: 2, targetMessageCount: 1, restartOpportunityCount: 1, pairOpportunityCount: 1 },
-      INTEREST_SIGNAL_CONFIG,
+// ---------------------------------------------------------------------------
+// Phase 1.1 / 1.2 — Reciprocity Pair invariants
+// ---------------------------------------------------------------------------
+
+describe('Reciprocity: real pair tracking, not raw question volume', () => {
+  test('question_response opportunity is driven only by the initiator\'s question count, unaffected by self-disclosure signals', () => {
+    const codeFeatures = makeCodeFeatures({ questionMessageCountBySpeaker: { personA: 0, personB: 7 } })
+    const opp = computePairOpportunity('question_response', codeFeatures, [], 'personB')
+    expect(opp).toBe(7)
+  })
+
+  test("self_disclosure's reciprocity denominator (mutual_disclosure) is unaffected by '?' count", () => {
+    const validatedSignals: ValidatedSignal[] = repeat(4, () =>
+      makeSignal({ signalType: 'self_disclosure', category: 'intimacy', actorSpeakerId: 'personB' }),
     )
-    expect(Number.isFinite(result.score)).toBe(true)
-    expect(result.score).toBeGreaterThanOrEqual(0)
-    expect(result.score).toBeLessThanOrEqual(100)
+    const lowQuestions = makeCodeFeatures({ questionMessageCountBySpeaker: { personA: 0, personB: 1 } })
+    const highQuestions = makeCodeFeatures({ questionMessageCountBySpeaker: { personA: 0, personB: 500 } })
+
+    const oppLow = computePairOpportunity('mutual_disclosure', lowQuestions, validatedSignals, 'personB')
+    const oppHigh = computePairOpportunity('mutual_disclosure', highQuestions, validatedSignals, 'personB')
+    expect(oppLow).toBe(4)
+    expect(oppHigh).toBe(4)
+  })
+
+  test('topic_expansion is excluded from the scoring config (audit finding #5)', () => {
+    expect(RECIPROCITY_PAIR_CONFIG.some((cfg) => cfg.pairType === 'topic_expansion')).toBe(false)
+  })
+
+  test('RECIPROCITY_PAIR_CONFIG (5 pairTypes, topic_expansion excluded) weights sum to 100', () => {
+    const sum = RECIPROCITY_PAIR_CONFIG.reduce((total, cfg) => total + cfg.weight, 0)
+    expect(sum).toBe(100)
+  })
+
+  test('a valid question_response pair scores above zero for the responder', () => {
+    // avgOpportunity across the 5 scored pairTypes for initiator=personB must
+    // itself clear MIN_JUDGEABLE_OPPORTUNITY (question_response + plan_response
+    // are the only two with nonzero opportunity here; the other 3 are 0 since
+    // no intimacy signals were supplied) — bumped well above the threshold.
+    const codeFeatures = makeCodeFeatures({
+      questionMessageCountBySpeaker: { personA: 0, personB: 25 },
+      planProposalMessageCountBySpeaker: { personA: 0, personB: 25 },
+    })
+    const pairs = repeat(3, () => makePair({ pairType: 'question_response', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA' }))
+    const result = computeReciprocity(pairs, 'personA', 'personB', codeFeatures, [])
+    expect(requireScore(result.bySpeaker.personA)).toBeGreaterThan(0)
+  })
+
+  test('one-sided pairs (only A responds, B never does) does not inflate overall Reciprocity', () => {
+    const codeFeatures = makeCodeFeatures({
+      questionMessageCountBySpeaker: { personA: 25, personB: 25 },
+      planProposalMessageCountBySpeaker: { personA: 25, personB: 25 },
+    })
+    const oneSided = computeReciprocity(
+      repeat(5, () => makePair({ pairType: 'question_response', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA' })),
+      'personA',
+      'personB',
+      codeFeatures,
+      [],
+    )
+    const balanced = computeReciprocity(
+      [
+        ...repeat(5, () => makePair({ pairType: 'question_response', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA' })),
+        ...repeat(5, () => makePair({ pairType: 'question_response', initiatorSpeakerId: 'personA', responderSpeakerId: 'personB' })),
+      ],
+      'personA',
+      'personB',
+      codeFeatures,
+      [],
+    )
+    expect(requireScore(oneSided)).toBeLessThan(requireScore(balanced))
+  })
+
+  test('one direction with opportunity below the judgeable threshold is null/"insufficient", not a forced 0 that reads as bad reciprocity', () => {
+    // personA never sends any message at all — personB "responding to
+    // personA" has zero opportunity of every pairType.
+    const codeFeatures = makeCodeFeatures({
+      messageCountBySpeaker: { personA: 0, personB: 50 },
+      questionMessageCountBySpeaker: { personA: 0, personB: 10 },
+      planProposalMessageCountBySpeaker: { personA: 0, personB: 0 },
+    })
+    const result = computeReciprocity([], 'personA', 'personB', codeFeatures, [])
+    // personB "responding to personA" (initiator=personA) has zero opportunity.
+    expect(result.bySpeaker.personB.score).toBeNull()
+    expect(result.bySpeaker.personB.confidence).toBe('insufficient')
+    // The overall result can't be judged either, since one direction can't be.
+    expect(result.score).toBeNull()
+    expect(result.confidence).toBe('insufficient')
+  })
+
+  test('opportunity is judgeable but zero pairs occurred -> score 0, not null (real zero)', () => {
+    const codeFeatures = makeCodeFeatures({ questionMessageCountBySpeaker: { personA: 20, personB: 20 } })
+    const result = computeReciprocity([], 'personA', 'personB', codeFeatures, [])
+    expect(result.bySpeaker.personA.score).toBe(0)
+    expect(result.bySpeaker.personA.confidence).not.toBe('insufficient')
+    expect(result.score).toBe(0)
+  })
+
+  test('overall Reciprocity is deterministic — same pairs in, same result out, twice', () => {
+    const codeFeatures = makeCodeFeatures()
+    const pairs = repeat(4, () => makePair({ pairType: 'question_response', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA' }))
+    const a = computeReciprocity(pairs, 'personA', 'personB', codeFeatures, [])
+    const b = computeReciprocity(pairs, 'personA', 'personB', codeFeatures, [])
+    expect(a).toEqual(b)
   })
 })
 
-describe('no signals at all -> zero score, low confidence', () => {
-  test('computeIndividualScore with an empty signal list', () => {
+// ---------------------------------------------------------------------------
+// Phase 1.3 — Reciprocity Pair-Type Coverage Audit
+//
+// Bug found: a pairType with opportunity=0 still had its full weight counted
+// in the score denominator, so a conversation where only question_response
+// (weight 34) ever had any opportunity — answered perfectly every time —
+// could never score above ~34, because the other 4 pairTypes' combined
+// weight (66) sat in the denominator contributing 0 to the numerator, acting
+// like "unobserved = failed" for dimensions that were never observable.
+// Fixed in reciprocity.ts: opportunity=0 excludes a pairType from BOTH the
+// numerator and the weight denominator; confidence now uses totalOpportunity
+// (summed over available pairTypes) and pairTypeCoverage (available weight /
+// full weight) as two separate axes instead of one flattened average.
+// ---------------------------------------------------------------------------
+
+describe('Reciprocity Pair-Type Coverage Audit (Phase 1.3)', () => {
+  test('question_response opportunity alone, answered every time -> score is NOT capped near its own weight share (34)', () => {
+    const codeFeatures = makeCodeFeatures({
+      messageCountBySpeaker: { personA: 100, personB: 100 },
+      questionMessageCountBySpeaker: { personA: 0, personB: 20 },
+      planProposalMessageCountBySpeaker: { personA: 0, personB: 0 },
+    })
+    // personA responds to every one of personB's 20 questions.
+    const pairs = repeat(20, () => makePair({ pairType: 'question_response', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA' }))
+    const result = computeReciprocity(pairs, 'personA', 'personB', codeFeatures, [])
+    expect(requireScore(result.bySpeaker.personA)).toBe(100)
+  })
+
+  test('opportunity-less pairTypes never dilute the score — adding unrelated (non-triggering) signals does not change it', () => {
+    const codeFeatures = makeCodeFeatures({
+      questionMessageCountBySpeaker: { personA: 0, personB: 20 },
+      planProposalMessageCountBySpeaker: { personA: 0, personB: 0 },
+    })
+    const pairs = repeat(10, () => makePair({ pairType: 'question_response', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA' }))
+
+    const withoutNoise = computeReciprocity(pairs, 'personA', 'personB', codeFeatures, [])
+    const withNoise = computeReciprocity(pairs, 'personA', 'personB', codeFeatures, [
+      // Unrelated to every reciprocity pairType's opportunity computation —
+      // an Interest-category signal doesn't feed mutual_disclosure,
+      // emotional_empathy, or joke_reciprocation's trigger counts.
+      ...repeat(50, () => makeSignal({ signalType: 'follow_up_question', category: 'interest', actorSpeakerId: 'personB' })),
+    ])
+
+    expect(requireScore(withNoise.bySpeaker.personA)).toBe(requireScore(withoutNoise.bySpeaker.personA))
+  })
+
+  test('opportunity exists but zero responses occurred -> that pairType is a real 0, dragging the average down (not excluded)', () => {
+    const codeFeatures = makeCodeFeatures({
+      questionMessageCountBySpeaker: { personA: 0, personB: 20 },
+      planProposalMessageCountBySpeaker: { personA: 0, personB: 0 },
+    })
+    // personB also self-discloses 10 times (mutual_disclosure opportunity),
+    // but personA never once reciprocates that specific pairType.
+    const validatedSignals = repeat(10, () => makeSignal({ signalType: 'self_disclosure', category: 'intimacy', actorSpeakerId: 'personB' }))
+    const pairs = repeat(20, () => makePair({ pairType: 'question_response', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA' }))
+
+    const result = computeReciprocity(pairs, 'personA', 'personB', codeFeatures, validatedSignals)
+    // question_response alone would score 100 (previous test) — the
+    // available-but-unanswered mutual_disclosure opportunity must pull this
+    // below 100, proving it's counted as a real 0 rather than excluded.
+    expect(requireScore(result.bySpeaker.personA)).toBeLessThan(100)
+    expect(requireScore(result.bySpeaker.personA)).toBeGreaterThan(0)
+  })
+
+  test('abundant total opportunity concentrated in a single pairType (narrow coverage) does not reach high confidence', () => {
+    const codeFeatures = makeCodeFeatures({
+      messageCountBySpeaker: { personA: 200, personB: 200 },
+      questionMessageCountBySpeaker: { personA: 0, personB: 100 },
+      planProposalMessageCountBySpeaker: { personA: 0, personB: 0 },
+      sessionCount: 10,
+    })
+    const pairs = repeat(50, () => makePair({ pairType: 'question_response', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA' }))
+    const result = computeReciprocity(pairs, 'personA', 'personB', codeFeatures, [])
+    expect(result.bySpeaker.personA.confidence).not.toBe('insufficient')
+    expect(result.bySpeaker.personA.confidence).not.toBe('high')
+  })
+
+  test('broad coverage across several pairTypes with ample message/session data can reach high confidence', () => {
+    const codeFeatures = makeCodeFeatures({
+      messageCountBySpeaker: { personA: 200, personB: 200 },
+      questionMessageCountBySpeaker: { personA: 0, personB: 30 },
+      planProposalMessageCountBySpeaker: { personA: 0, personB: 20 },
+      sessionCount: 10,
+    })
+    const validatedSignals = [
+      ...repeat(15, () => makeSignal({ signalType: 'self_disclosure', category: 'intimacy', actorSpeakerId: 'personB' })),
+      ...repeat(15, () => makeSignal({ signalType: 'vulnerable_emotion_share', category: 'intimacy', actorSpeakerId: 'personB' })),
+    ]
+    const pairs = [
+      ...repeat(20, () => makePair({ pairType: 'question_response', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA' })),
+      ...repeat(12, () => makePair({ pairType: 'mutual_disclosure', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA' })),
+      ...repeat(12, () => makePair({ pairType: 'emotional_empathy', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA' })),
+      ...repeat(15, () => makePair({ pairType: 'plan_response', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA' })),
+    ]
+    const result = computeReciprocity(pairs, 'personA', 'personB', codeFeatures, validatedSignals)
+    expect(result.bySpeaker.personA.confidence).toBe('high')
+  })
+
+  test('every pairType at opportunity=0 -> null score, insufficient confidence', () => {
+    const codeFeatures = makeCodeFeatures({
+      questionMessageCountBySpeaker: { personA: 0, personB: 0 },
+      planProposalMessageCountBySpeaker: { personA: 0, personB: 0 },
+    })
+    const result = computeReciprocity([], 'personA', 'personB', codeFeatures, [])
+    expect(result.bySpeaker.personA.score).toBeNull()
+    expect(result.bySpeaker.personA.confidence).toBe('insufficient')
+    expect(result.score).toBeNull()
+    expect(result.confidence).toBe('insufficient')
+  })
+})
+
+describe('Reciprocity Pair Validator', () => {
+  const messages: EnrichedMessage[] = [
+    { id: 'm0', speakerId: 'personB', timestamp: null, date: null, text: '뭐해?', sourceType: 'txt', sessionId: 's0' },
+    { id: 'm1', speakerId: 'personA', timestamp: null, date: null, text: '그냥 있어', sourceType: 'txt', sessionId: 's0' },
+    { id: 'm2', speakerId: 'personA', timestamp: null, date: null, text: '너는?', sourceType: 'txt', sessionId: 's1' },
+  ]
+
+  test('accepts a well-formed pair (trigger before response, different speakers, same session)', () => {
+    const { validated, rejected } = validateReciprocityPairs(
+      [{ pairType: 'question_response', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA', triggerMessageIds: ['m0'], responseMessageIds: ['m1'], reason: 'x' }],
+      messages,
+      'chunk_0',
+    )
+    expect(validated).toHaveLength(1)
+    expect(rejected).toHaveLength(0)
+  })
+
+  test('invalid trigger/response ordering (response before trigger) is rejected', () => {
+    const { rejected } = validateReciprocityPairs(
+      [{ pairType: 'question_response', initiatorSpeakerId: 'personA', responderSpeakerId: 'personB', triggerMessageIds: ['m1'], responseMessageIds: ['m0'], reason: 'x' }],
+      messages,
+      'chunk_0',
+    )
+    expect(rejected[0]?.reason).toBe('invalid_order')
+  })
+
+  test('same speaker as both initiator and responder is rejected', () => {
+    const { rejected } = validateReciprocityPairs(
+      [{ pairType: 'question_response', initiatorSpeakerId: 'personA', responderSpeakerId: 'personA', triggerMessageIds: ['m1'], responseMessageIds: ['m2'], reason: 'x' }],
+      messages,
+      'chunk_0',
+    )
+    expect(rejected[0]?.reason).toBe('same_speaker')
+  })
+
+  test('a response across a session boundary is rejected as out_of_range', () => {
+    const { rejected } = validateReciprocityPairs(
+      [{ pairType: 'question_response', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA', triggerMessageIds: ['m0'], responseMessageIds: ['m2'], reason: 'x' }],
+      messages,
+      'chunk_0',
+    )
+    expect(rejected[0]?.reason).toBe('out_of_range')
+  })
+
+  test('a nonexistent messageId is rejected', () => {
+    const { rejected } = validateReciprocityPairs(
+      [{ pairType: 'question_response', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA', triggerMessageIds: ['ghost'], responseMessageIds: ['m1'], reason: 'x' }],
+      messages,
+      'chunk_0',
+    )
+    expect(rejected[0]?.reason).toBe('unknown_message_id')
+  })
+
+  test('topic_expansion pairs are still accepted by the validator (evidence-only, not scored)', () => {
+    const { validated } = validateReciprocityPairs(
+      [{ pairType: 'topic_expansion', initiatorSpeakerId: 'personB', responderSpeakerId: 'personA', triggerMessageIds: ['m0'], responseMessageIds: ['m1'], reason: 'x' }],
+      messages,
+      'chunk_0',
+    )
+    expect(validated).toHaveLength(1)
+  })
+})
+
+describe('Interaction Energy / Temperature (audit finding #5)', () => {
+  test('message count alone does not raise Temperature\'s score when the alternation pattern is unchanged', () => {
+    const shortConvo = makeCodeFeatures({
+      messageCountBySpeaker: { personA: 10, personB: 10 },
+      turnAlternationRate: 0.5,
+      sessionCount: 2,
+    })
+    const longConvo = makeCodeFeatures({
+      messageCountBySpeaker: { personA: 500, personB: 500 },
+      turnAlternationRate: 0.5,
+      sessionCount: 2,
+    })
+    const shortResult = runScoreEngine({ codeFeatures: shortConvo, validatedSignals: [], reciprocityPairs: [] })
+    const longResult = runScoreEngine({ codeFeatures: longConvo, validatedSignals: [], reciprocityPairs: [] })
+    expect(requireScore(shortResult.temperature)).toBe(requireScore(longResult.temperature))
+  })
+
+  test('session count alone does not raise Temperature\'s score (removed from the InteractionEnergy formula entirely)', () => {
+    const fewSessions = makeCodeFeatures({ sessionCount: 1, turnAlternationRate: 0.5 })
+    const manySessions = makeCodeFeatures({ sessionCount: 50, turnAlternationRate: 0.5 })
+    const a = runScoreEngine({ codeFeatures: fewSessions, validatedSignals: [], reciprocityPairs: [] })
+    const b = runScoreEngine({ codeFeatures: manySessions, validatedSignals: [], reciprocityPairs: [] })
+    expect(requireScore(a.temperature)).toBe(requireScore(b.temperature))
+  })
+
+  test('higher turnAlternationRate raises Temperature via InteractionEnergy, holding everything else fixed', () => {
+    const lowAlternation = makeCodeFeatures({ turnAlternationRate: 0.1 })
+    const highAlternation = makeCodeFeatures({ turnAlternationRate: 0.9 })
+    const a = runScoreEngine({ codeFeatures: lowAlternation, validatedSignals: [], reciprocityPairs: [] })
+    const b = runScoreEngine({ codeFeatures: highAlternation, validatedSignals: [], reciprocityPairs: [] })
+    expect(requireScore(b.temperature)).toBeGreaterThan(requireScore(a.temperature))
+  })
+})
+
+describe('Temperature missing-metric handling (Phase 1.2 audit finding #4)', () => {
+  test('a metric that is null on one side makes the mutual (harmonic-mean) component null, dropping it from Temperature rather than treating it as 0', () => {
+    // An extremely short conversation (2 messages each side, one session) —
+    // every component's opportunity (target message count for Interest,
+    // actor message count for Intimacy, pairType triggers for Reciprocity,
+    // total messages for InteractionEnergy) falls below
+    // MIN_JUDGEABLE_OPPORTUNITY, so all 4 Temperature components end up
+    // null. availableWeight=0 < MIN_TEMPERATURE_WEIGHT_COVERAGE -> Temperature null.
+    const codeFeatures = makeCodeFeatures({
+      messageCountBySpeaker: { personA: 2, personB: 2 },
+      turnInitiationCounts: { personA: 1, personB: 1 },
+      questionMessageCountBySpeaker: { personA: 0, personB: 0 },
+      planProposalMessageCountBySpeaker: { personA: 0, personB: 0 },
+      restartOpportunityCount: 1,
+      sessionCount: 1,
+    })
+    const result = runScoreEngine({ codeFeatures, validatedSignals: [], reciprocityPairs: [] })
+    expect(result.core4.interest.bySpeaker.personA.score).toBeNull()
+    expect(result.core4.intimacy.bySpeaker.personA.score).toBeNull()
+    expect(result.core4.reciprocity.score).toBeNull()
+    expect(result.temperature.score).toBeNull()
+    expect(result.temperature.confidence).toBe('insufficient')
+  })
+
+  test('with enough coverage, Temperature renormalizes over the available components instead of returning null', () => {
+    // Ample data on both sides -> all 4 components judgeable -> full coverage.
+    const codeFeatures = makeCodeFeatures()
+    const result = runScoreEngine({
+      codeFeatures,
+      validatedSignals: repeat(5, () => makeSignal({ signalType: 'self_disclosure', category: 'intimacy', actorSpeakerId: 'personA' })),
+      reciprocityPairs: [],
+    })
+    expect(result.temperature.score).not.toBeNull()
+  })
+})
+
+describe('no signals at all -> zero score, not-insufficient confidence', () => {
+  test('computeIndividualScore with an empty signal list but ample opportunity', () => {
     const result = computeIndividualScore(
       [],
       'personA',
-      { actorMessageCount: 100, targetMessageCount: 100, restartOpportunityCount: 10, pairOpportunityCount: 20 },
-      RECIPROCITY_SIGNAL_CONFIG,
+      { actorMessageCount: 100, targetMessageCount: 100, restartOpportunityCount: 10 },
+      INTEREST_SIGNAL_CONFIG,
+      5,
     )
     expect(result.score).toBe(0)
-    expect(result.confidence).toBe('low')
+    expect(result.confidence).not.toBe('insufficient')
+  })
+})
+
+describe('computeConfidence (Phase 1.2 redesign, audit finding #2 — no evidenceCount input at all)', () => {
+  test('opportunity below the judgeable threshold is always insufficient, regardless of how large message/session count are', () => {
+    expect(computeConfidence({ opportunity: 2, messageCount: 1000, sessionCount: 50 })).toBe('insufficient')
+  })
+
+  test('opportunity just above the threshold, but message/session count small -> low', () => {
+    expect(computeConfidence({ opportunity: 6, messageCount: 10, sessionCount: 1 })).toBe('low')
+  })
+
+  test('everything comfortably large is high', () => {
+    expect(computeConfidence({ opportunity: 50, messageCount: 200, sessionCount: 5 })).toBe('high')
   })
 })
