@@ -1149,3 +1149,35 @@ Phase 0 조건부 승인에 따라 다음 6개 작업을 추가로 완료했다.
 6. **v1 구조화출력 레거시 폴백의 비상속 원칙** — §8.3에 명시
 
 이번 작업으로 새로 추가된 devDependency: `@testing-library/react`, `jsdom`. 새 npm script: `db:migrate:deploy`, `db:verify`.
+
+---
+
+## 24. Phase 1 구현 기록
+
+**착수일**: 2026-09-13 · **브랜치**: `feat/v2-phase1-relationship-engine` (base: `feat/v2-phase0-stabilize`@`afe9dca`, 태그: `v2-phase0-complete`)
+
+### 24.1 범위
+
+§20 Phase 1(Core Engine)의 작업 목록을 그대로 구현했다: Standard Message Model 어댑터, Code Feature Extractor, LLM Signal Extractor, Evidence Validator, Score Engine(Opportunity Rate + Saturation 기반 Core4/Temperature/Romance). 전부 `server/engine/**` 아래 신규 코드이며, 기존 파일 중 실제로 수정한 것은 `package.json`(`typecheck` 스크립트 추가)뿐이다. `analyzeLocal.js`/`deepAnalysisLocal.js`는 **삭제하지 않았다** — §20 작업 목록의 "레거시 파일 폐기" 문구와 달리, 이 둘은 아직 v1 UI(`App.jsx`의 1차 로컬 점수 미리보기, API 실패 폴백)가 실제로 참조하는 살아있는 경로이고, 새 엔진은 아직 어떤 라우트에도 연결되지 않았다(라우트 연결은 Phase 2 `previewPipeline.ts`의 일). 지금 지우면 기존 기능이 대체 없이 깨지므로, 삭제는 Phase 2에서 새 엔진이 실제로 그 자리를 대신할 때로 미뤘다 — "Phase 2 이후에는 들어가지 마라"는 이번 턴의 지시와도 일치하는 판단이다.
+
+### 24.2 설계 문서와 다르게 구현한 부분 (실측/실험으로 확인된 것)
+
+1. **§5.1의 `declare module '*/parseChat.js'` 앰비언트 타입 경계는 실제로 동작하지 않는다.** `tsc --noEmit`으로 직접 확인: relative import(`'../../../src/utils/parseChat.js'`)는 `allowJs`가 켜져 있으면 실제 `.js` 파일로 먼저 해석되고, 와일드카드 앰비언트 모듈 선언은 무시된다(에러: "has no exported member named 'RawParsedMessage'"). 대신 `server/engine/messageModel/parseChatShim.ts`에서 `parseMessages`/`getConversationMeta`를 import한 뒤 `as unknown as <T>`로 캐스팅해 타입을 부여하는 방식으로 교체했다 — 경계 지점은 §5.1의 의도(파서 진입부 한 곳으로 봉쇄)와 동일하게 유지된다.
+2. **§10.2의 `no-restricted-imports` oxlint override는 동작하지 않는다.** oxlint 1.69의 설정 스키마 자체가 이 규칙을 `DummyRule`로 등록해 두었다 — 실제로 `server/engine/score/`에 `@anthropic-ai/sdk` import를 넣고 override 설정으로 lint를 돌려봤지만 아무 진단도 나오지 않았다(직접 확인함). 대신 `server/engine/importBoundary.test.ts`가 `score/**`, `features/**`의 모든 `.ts` 소스를 문자열 검사해 같은 것을 강제한다 — `npm test`에 포함되어 항상 실행된다.
+3. **Initiative는 LLM Signal 없이 순수 코드로만 계산한다.** PRD §8.2/§9.5는 Initiative에 "새 화제 제시/약속 제안/대화 확장" 같은 LLM 시그널도 기여한다고 적었지만, Evidence Model(PRD §13)의 `category` enum에는 애초에 `interest/intimacy/reciprocity/romance/distancing` 5종만 있고 "initiative"는 없다. 새 카테고리를 만들지 않고, Initiative는 `turnInitiationCounts`(대화 시작/재개 코드 카운트)만으로 계산했다 — PRD가 흔들리는 지점(카테고리 스키마 vs Initiative 입력표)을 스키마 쪽을 기준으로 해소한 것이다. Phase 2/3에서 실제 데이터로 부족하다고 판단되면 카테고리를 늘리는 결정이 필요하다(**남은 결정 사항**으로 아래 §24.4에 기록).
+
+### 24.3 완료조건 검증 결과 (§20 Phase 1)
+
+1. **Invariant Fixture** — `server/engine/score/scoreEngine.invariant.test.ts`에 17개 테스트(요구한 12~20개 범위 안). 길이 불변성·saturation(농도 검증 포함)·rate-vs-count 3종 필수 항목 전부 포함. 전부 통과.
+2. **Evidence Validator 단위 테스트** — `server/engine/signals/evidenceValidator.test.ts`(9개), 전부 통과.
+3. **`@anthropic-ai/sdk` import 금지** — 위 24.2-2 참조. `server/engine/importBoundary.test.ts`로 강제, 통과.
+4. **Signal Extraction 스키마에 숫자 필드 없음** — `server/engine/signals/schema.test.ts`가 zod 스키마 내부(`_def.type`)를 재귀적으로 순회해 `number` 타입이 하나도 없음을 확인. `strength` 필드 자체가 스키마에 없음(§13 RelationshipSignal 타입에도 없음).
+
+`npm test`(vitest) 88 passed / 2 skipped, `npm run typecheck`(신규 스크립트, `tsc --noEmit`) 0 errors, `npm run lint`(oxlint) Phase 1 코드에서 경고 0건(기존 파일의 사전 존재 경고 7건은 무변경), `npm run build`(vite) 정상.
+
+### 24.4 남은 결정 사항 (Phase 2 착수 전 확인 필요)
+
+1. **Initiative의 LLM 시그널 기여 여부** — 24.2-3 참조. 현재는 코드 전용. PRD의 원래 의도(새 화제 제시 등)를 살리려면 Evidence Model에 6번째 category를 추가하거나, 기존 `interest` 카테고리의 signalType 중 일부를 Initiative 계산에도 재사용하는 설계가 필요하다 — Phase 2에서 Preview UX를 붙이기 전에 결정.
+2. **Reciprocity의 정확한 수식** — PRD §8.4의 `Balance × EvidenceCoverage × InteractionQuality`를 `Balance × rawAvg`(opportunity-rate 점수 평균)로 단순화했다(PRD 스스로 "세부 수식은 실제 데이터 테스트 후 보정"이라 명시한 부분). 실제 대화 데이터로 보정 필요.
+3. **InteractionEnergy 공식** — PRD §9.3이 후보만 나열하고 공식을 정하지 않은 부분을 `참여 균형 0.6 + 세션 다양성 0.4`로 1차 구현했다(`temperature.ts`). 튜닝 대상.
+4. **Weight 값(weights.ts) 전체** — 코드 고정값이지만 전부 제품 휴리스틱이며 실측 데이터 없음. §19.2 invariant test는 "방향성"만 검증하고 정확한 숫자를 검증하지 않는다.

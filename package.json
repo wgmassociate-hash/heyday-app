@@ -10,6 +10,7 @@
     "build": "vite build",
     "start": "NODE_ENV=production tsx server/index.js",
     "lint": "oxlint",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
