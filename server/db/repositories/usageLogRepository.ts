@@ -21,7 +21,16 @@ const FALLBACK_LOG_PATH = join(__dirname, "../../data/usage-log.jsonl");
 
 export interface UsageLogEntry {
   deviceId: string | null;
-  callSite: "analyze" | "ocr_screenshots";
+  // Phase 2: "relationship_preview" added for the new engine's Free Preview
+  // LLM call (server/previewAnalyze.ts) — kept in this same simple per-call
+  // log rather than migrating to docs/implementation_plan_v2.md §17.1's
+  // analysisId-keyed AnalysisUsageLog schema yet. That schema conflates
+  // Preview+Paid+conversion tracking into one row per analysis, which only
+  // makes sense once Paid Deep (Phase 3) actually exists to fill its
+  // paidInputTokens/paidCost/reportType/converted fields — doing that
+  // migration now would leave those columns permanently null. Revisit at
+  // Phase 3.
+  callSite: "analyze" | "ocr_screenshots" | "relationship_preview";
   model: string;
   inputTokens: number;
   outputTokens: number;

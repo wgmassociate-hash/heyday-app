@@ -1375,3 +1375,49 @@ Phase 1.2 감사 중 실제 Anthropic API로 80-message 샘플을 1회 호출(�
 4. Preview 경로의 latency/cost를 실측해 **Paid Deep과 별도로 벤치마크 문서화**.
 
 **설계 원칙(지금 확정, 코드는 Phase 2에서)**: `llmSignalExtractor.ts`의 `LlmSignalExtractorOptions.model`/`maxOutputTokens`는 이미 호출부가 오버라이드할 수 있는 구조다 — Phase 2의 Preview 파이프라인은 이 옵션을 통해 Paid Deep과 **다른 model/token budget을 환경설정으로 분리**해서 넘기면 된다(새 인터페이스 설계 불필요, 기존 옵션을 다른 값으로 호출하기만 하면 됨). 단, 그 "다른 값"이 실제로 무엇이어야 하는지(모델명, 토큰 budget, 청크 크기)는 위 1~4번 실측 없이는 정할 수 없다.
+
+---
+
+## 27. Phase 2 구현 기록
+
+**착수일**: 2026-09-13 · **브랜치**: `feat/v2-phase2-free-preview` (base: `feat/v2-phase1-relationship-engine`, 태그: `v2-phase1-complete`)
+
+### 27.1 범위
+
+§20 Phase 2의 작업 목록을 구현했다: Intent 선택 UI, `selectPreviewWindow()`(§13.2), Stage1 파이프라인(`previewPipeline.ts`, `PreviewScoreResult` 명명), `previewNarrative.ts`(코드 템플릿), Paywall UI(1차 — 잠금 안내만, 실제 결제는 Phase 3), Preview 전용 Usage 로깅. 이번 턴의 지시("Phase 3 결제/Paid Deep, Trend/Turning Point, 사주에는 들어가지 마라")에 따라 그 세 영역은 건드리지 않았다.
+
+신규 파일:
+- `server/engine/intent/types.ts`, `shared/intentOptions.js` — `AnalysisIntent` (PRD §4)
+- `server/engine/pipeline/{types,analysisMode,chunkPlan,topSignal,previewPipeline}.ts` — Stage1 오케스트레이션
+- `server/engine/narrative/previewNarrative.ts` — §15.4 코드 템플릿
+- `server/db/repositories/analysisResultRepository.ts` + `AnalysisResult` Prisma 모델/마이그레이션(`20260913000000_phase2_analysis_result`) — §6.5 Preview TTL(24h) 저장
+- `server/previewAnalyze.ts`, `server/index.js`의 `POST /api/preview` — 라우트 계층
+- `src/components/{IntentStep,PreviewResultStep}.jsx`, `src/utils/previewApi.js` — 프론트엔드
+- `src/App.jsx` — 기존 로컬 휴리스틱(`analyzeLocal.js`) 기반 제출 흐름을 새 엔진 호출로 교체
+
+### 27.2 설계 문서와 다르게 구현/보강한 부분
+
+1. **`PreviewScoreResult`는 §12.4의 스케치보다 풍부하다.** §12.4는 `recentConversationTemperature: number`처럼 평평한 숫자로 스케치했는데, 이는 Phase 1.2의 Missing-Evidence 재설계(§25) 이전 버전이다. Phase 1.2 이후 모든 지표는 `score: number | null` + 독립적인 `confidence`를 갖는 `IndividualScore`이므로, 그대로 평평하게 만들면 "판단 불가"(null)와 "관찰했지만 0"이라는 §25의 핵심 구분이 Preview 응답에서 사라진다. `server/engine/pipeline/types.ts`는 그 구분을 보존하도록 `IndividualScore`/`RomanceResult`/`Core4Result` 원본 타입을 그대로 감싸는 방식으로 설계했다.
+2. **Preview 전용 `maxOutputTokens`를 도입하지 않았다 — 오히려 실측으로 위험성을 확인했다.** §26은 "Preview는 더 저렴한/짧은 설정을 써야 한다"고 제안했지만, 정확한 숫자는 실측 필요라고 명시했다. 처음에는 `2048`을 추정치로 넣었는데, `samples/01-romantic-some.txt`(32줄, 청크 1개) 기준 실제 Anthropic API 호출로 검증한 결과 **구조화 출력 JSON이 중간에 잘리는 문제**(`Unterminated string in JSON`)가 재현됐다 — analysis_v1.md/§23.3이 v1의 `max_tokens: 4096`에서 지적했던 것과 정확히 같은 실패 모드가, 그보다 더 낮은 상한에서 다시 나타난 것이다. 이 실패는 조용히 "Signal 0개"로 처리되므로(§8.3의 의도된 동작) 실제로 점수가 전부 0/판단불가로 나오기 전까지는 겉으로 드러나지 않았다. 최종적으로 `maxOutputTokens`는 **명시적으로 설정하지 않음**(`llmSignalExtractor.ts` 자신의 측정된 기본값 4096을 그대로 물려받음)으로 확정했고, `ANTHROPIC_PREVIEW_MAX_OUTPUT_TOKENS` 환경변수로만 나중에 실측된 값을 넣을 수 있게 남겨뒀다. §26의 1~4번 실측 항목은 여전히 미해결로 남는다.
+3. **Preview 전용 Usage 로깅은 §17.1의 `analysisId` 키 스키마로 이전하지 않고, Phase 0의 단순 per-call 로그(`AnalysisUsageLog`, `callSite` 문자열 컬럼)에 `callSite: "relationship_preview"`를 추가하는 방식으로 구현했다.** §17.1의 스키마(`previewCost`/`paidCost`/`reportType`/`converted`를 한 행에 같이 두는 구조)는 Paid Deep이 실제로 존재해야 의미가 있다 — 지금 마이그레이션하면 `paidInputTokens` 등 컬럼이 영구히 null인 채로 남는다. Phase 3에서 결제/Paid Deep이 실제로 붙을 때 이 스키마 전환을 함께 하는 것으로 미룬다(`usageLogRepository.ts`의 `UsageLogEntry.callSite` 타입 주석에 기록).
+4. **Intent → topSignal 우선순위(`topSignal.ts`)는 이번 턴에 새로 설계한 매핑이다.** PRD §4는 "Intent가 결과 우선순위를 바꾼다"는 원칙만 정의하고 구체적인 매핑은 정의하지 않았다. `INTENT_CATEGORY_PRIORITY`는 각 Intent가 어떤 `SignalCategory`(interest/intimacy/romance/distancing)를 먼저 찾는지의 1차 초안이며, 실사용 데이터로 보정이 필요한 튜닝 대상이다(다른 가중치 상수들과 같은 성격).
+5. **`windowLabel`의 구체적인 구간 라벨(며칠/1주/2주/한 달 등) 임계값은 §13.2에 없던 값이라 이번에 새로 정의했다** (`server/engine/pipeline/chunkPlan.ts`) — MIN/MAX_PREVIEW_MESSAGES(40/120)와 같은 성격의 튜닝 가능한 placeholder.
+6. **`shared/intentOptions.js`를 `server/engine/intent/types.ts`가 import한다 — §5.1이 "JS/TS 경계는 정확히 하나(parseChatShim.ts)"라고 못박은 것의 두 번째 예외다.** Intent 값은 프론트엔드·라우트·엔진이 동일하게 알아야 하는 순수 데이터(로직 없음)라서, 손으로 따로 타이핑하면 두 곳의 값이 조용히 어긋날 수 있는 위험이 생긴다. `server/engine/intent/types.ts`의 주석에 이 예외를 기록해뒀다.
+
+### 27.3 완료조건 검증 결과 (§20 Phase 2)
+
+실제 Anthropic API 키로 `samples/01-romantic-some.txt`를 `POST /api/preview`에 라이브로 전송해 검증했다(mock이 아님):
+
+1. **Preview 단계 LLM 호출이 정확히 1회** — `server/engine/pipeline/previewPipeline.test.ts`의 mock 기반 테스트로 확인, 라이브 호출에서도 32줄 대화가 청크 1개(=extractor 호출 1회)로 처리됨을 확인.
+2. **모든 Preview Narrative 문구에 windowLabel이 포함됨** — `server/engine/narrative/previewNarrative.test.ts`가 3×3 버킷 조합 + insufficient 케이스 전부에서 `windowLabel` 포함 여부를 스냅샷 형태로 검증(9+1개 케이스 전부 통과). 라이브 응답에서도 `firstVerdict`/`summaryOneLine`에 실제로 포함됨을 확인.
+3. **Intent만 바꿔도 Core4/Temperature 숫자는 동일함** — `previewPipeline.test.ts`가 같은 입력에 `romantic_interest`/`friendship_change` 두 Intent로 각각 실행해 `recentConversationTemperature`/`core4Preview`/`recentRomanceSignal`이 완전히 동일함(`toEqual`)을, 반면 `topSignal.category`는 Intent에 따라 달라짐(romance vs interest)을 함께 검증했다.
+4. **Preview 결과가 24시간 뒤 조회 불가능함** — `analysisResultRepository.test.ts`가 `previewExpiresAt`를 과거로 조작한 레코드에 대해 `findById()`가 `null`을 반환함을 확인(물리적 삭제 여부와 무관하게 읽기 경로에서부터 차단, 파일 헤더 주석 참고). Postgres 없는 이 샌드박스에서는 파일 폴백 경로로 검증했고, Prisma 경로는 `findById()`가 동일한 `isExpired()` 체크를 공유하므로 로직상 동일하다(실제 Postgres 통합 검증은 `postgresCrud.integration.test.ts`처럼 사용자 환경에서 `DATABASE_URL`이 살아있을 때 필요 — §23.5와 동일한 제약).
+
+`npm test`(vitest) 168 passed / 2 skipped, `npm run typecheck` 0 errors, `npm run lint`(oxlint) 신규 경고 0건(기존 7건 무변경), `npm run build`(vite) 정상 — 오히려 번들 모듈 수가 60→43개로 줄었다(로컬 휴리스틱 폴백 청크가 메인 제출 흐름에서 더 이상 즉시 로드되지 않게 됨).
+
+### 27.4 의도적으로 남겨둔 것 (Phase 3 이전 결정 필요)
+
+1. **`src/utils/analyzeLocal.js`/`deepAnalysisLocal.js`, `src/components/ResultStep.jsx`(및 그 하위 — `AffectionTrendChart`/`CriticalMomentBubbles`/`DeepMetricsPanel`/`ResultShareActions`)는 삭제하지 않았다.** `App.jsx`의 제출 흐름은 이제 이 파일들을 참조하지 않지만(빌드 결과 확인됨), 파일 자체는 남아 있다 — §24.1이 예고했던 "새 엔진이 실제로 그 자리를 대신하면 삭제"의 시점이 이번이 맞지만, 이번 턴 지시("Phase 2만 구현하고 Phase 3 이후에는 들어가지 마라")의 안전한 해석은 진짜 삭제(대규모 파일 제거 + 회귀 위험)보다 "새 경로로 교체하되 기존 파일은 다음 정리 턴에 맡긴다"라고 판단했다. `server/analyze.js`와 `/api/analyze` 라우트도 같은 이유로 남겨뒀다(v1 호환 경로, 현재는 프론트엔드 어디에서도 호출하지 않음).
+2. **Paywall UI는 "잠금 안내 + 비활성 버튼"까지만 구현했다.** 결제 자체는 Phase 3(`PaymentGateway` interface + Provider 선정) 소관이므로, `PreviewResultStep.jsx`의 "전체 리포트 보기" 버튼은 의도적으로 `disabled`다.
+3. **§26의 Preview 전용 모델/토큰/청크 실측(1~4번)은 여전히 미해결.** 27.2-2에서 확인했듯 섣부른 축소는 위험하다는 것만 이번에 실증됐다.
+4. **Initiative의 LLM 시그널 기여 여부(§24.4-1)는 그대로 코드 전용으로 유지했다.** Phase 2가 실제로 Preview UX를 붙였지만, 이 결정을 바꿀 새로운 근거는 없었다.

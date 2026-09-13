@@ -9,9 +9,11 @@ dotenv.config({ path: join(__dirname, '../.env') })
 
 const { asyncHandler } = await import('./asyncHandler.js')
 const { analyzeWithClaude } = await import('./analyze.js')
+const { runPreviewAnalysis } = await import('./previewAnalyze.ts')
 const { extractChatFromScreenshots } = await import('./ocrScreenshots.js')
 const { anonymizeChatText, getConversationMeta, parseMessages } = await import('../src/utils/parseChat.js')
 const { scrubResultNames } = await import('../src/utils/scrubResult.js')
+const { isValidIntent } = await import('../shared/intentOptions.js')
 const {
   parseDeviceId,
   getQuotaStatus,
@@ -190,6 +192,58 @@ app.post('/api/analyze', asyncHandler(async (req, res) => {
       error: err.message || 'Claude API 분석 중 오류가 발생했습니다.',
       fallback: true,
     })
+  }
+}))
+
+app.post('/api/preview', asyncHandler(async (req, res) => {
+  // Phase 2 — Free Preview (docs/implementation_plan_v2.md §16.2). Same
+  // privacy contract as /api/analyze above: the client has already redacted
+  // names/phone numbers/emails from `text` before this request is made;
+  // anonymizeChatText() here is a defense-in-depth backstop only.
+  const { text, intent } = req.body ?? {}
+  const deviceId = parseDeviceId(req)
+
+  if (!deviceId) {
+    return res.status(400).json({ error: '기기 ID가 필요합니다. 페이지를 새로고침해 주세요.' })
+  }
+
+  if (!isValidIntent(intent)) {
+    return res.status(400).json({ error: '올바른 분석 목적을 선택해 주세요.' })
+  }
+
+  const quotaCheck = await assertCanUseQuota(deviceId)
+  if (!quotaCheck.ok) {
+    return res.status(429).json({
+      error: quotaCheck.error,
+      quota: quotaCheck.status,
+      code: 'QUOTA_EXCEEDED',
+    })
+  }
+
+  if (!text || typeof text !== 'string' || text.trim().length < 10) {
+    return res.status(400).json({ error: '분석할 대화 텍스트가 너무 짧습니다.' })
+  }
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(503).json({
+      error: isProd
+        ? 'API 키가 설정되지 않았습니다. Render → Environment → ANTHROPIC_API_KEY를 추가한 뒤 재배포하세요.'
+        : 'API 키가 설정되지 않았습니다. .env 파일에 ANTHROPIC_API_KEY를 추가하세요.',
+    })
+  }
+
+  try {
+    const { anonymizedText, nameMap } = anonymizeChatText(text.trim())
+    let result = await runPreviewAnalysis(anonymizedText, intent, deviceId)
+    result = scrubResultNames(result, nameMap)
+    const consumed = await consumeQuota(deviceId)
+    res.json({ ...result, quota: consumed.status })
+  } catch (err) {
+    console.error('[preview]', err.message)
+    if (isDatabaseUnavailable(err)) {
+      return res.status(503).json({ error: err.message, code: 'DATABASE_UNAVAILABLE' })
+    }
+    res.status(500).json({ error: err.message || 'Preview 분석 중 오류가 발생했습니다.' })
   }
 }))
 

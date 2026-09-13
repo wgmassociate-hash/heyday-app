@@ -18,6 +18,7 @@ dist-ssr
 # Server quota persistence (runtime data — file-based fallback when DATABASE_URL is unset/unreachable)
 server/data/quota.json
 server/data/usage-log.jsonl
+server/data/analysis-results/
 
 # Prisma (2.0) — generated client + local dev DB volume are not source
 server/db/prisma/client

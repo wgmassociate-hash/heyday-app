@@ -54,3 +54,49 @@ model AnalysisUsageLog {
   @@index([createdAt])
   @@map("analysis_usage_logs")
 }
+
+/// Phase 2 (docs/implementation_plan_v2.md §5.3, §16.2). Only the Free
+/// Preview (Stage 1) fields this phase actually produces are modeled here —
+/// `paidFields`/`paidExpiresAt`/`paymentId` from §5.3's original combined
+/// sketch are deliberately deferred to Phase 3 (added via a later migration,
+/// once Paid Deep and payment actually exist) rather than created now as
+/// unused nullable columns. `stage2Status` is kept from that sketch as a
+/// forward-compatible placeholder — every row Phase 2 writes stays
+/// NOT_STARTED — so Phase 3 only needs to ALTER TABLE, never rename this.
+model AnalysisResult {
+  id                String       @id @default(cuid())
+  deviceId          String?      @map("device_id")
+  intent            String
+  analysisMode      AnalysisMode @map("analysis_mode")
+  windowLabel       String       @map("window_label")
+  /// Chunk ids the Preview stage already ran through the LLM (§16.1's "이미
+  /// 수행한 분석을 중복 호출하지 않는다") — stored as JSON string[].
+  processedChunkIds Json         @map("processed_chunk_ids")
+  /// Serialized PreviewScoreResult + PreviewNarrative + topSignal
+  /// (server/engine/pipeline/types.ts). Raw conversation text is never
+  /// stored here or anywhere else (docs/prd_v2.md §25.1).
+  previewFields     Json         @map("preview_fields")
+  stage2Status      Stage2Status @default(NOT_STARTED) @map("stage2_status")
+  /// §6.5: Free/Preview rows live at most 24h. findById() on the repository
+  /// treats an expired row as not-found even before purgeExpired() physically
+  /// deletes it.
+  previewExpiresAt  DateTime     @map("preview_expires_at")
+  createdAt         DateTime     @default(now()) @map("created_at")
+
+  @@index([previewExpiresAt])
+  @@map("analysis_results")
+}
+
+enum Stage2Status {
+  NOT_STARTED
+  CLAIMED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum AnalysisMode {
+  SNAPSHOT
+  STANDARD
+  DEEP
+}

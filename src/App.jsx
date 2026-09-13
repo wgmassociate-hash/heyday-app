@@ -1,14 +1,15 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import AdSlot from './components/AdSlot'
+import IntentStep from './components/IntentStep'
 import InputStep from './components/InputStep'
 import LoadingStep from './components/LoadingStep'
-import ResultStep from './components/ResultStep'
+import PreviewResultStep from './components/PreviewResultStep'
 import QuotaBadge from './components/QuotaBadge'
-import { analyzeChat, anonymizeChatText } from './utils/anonymize'
-import { scrubResultNames } from './utils/scrubResult.js'
-import { fetchQuota, claimShareBonus } from './utils/quotaApi.js'
+import { analyzePreview } from './utils/previewApi.js'
+import { fetchQuota } from './utils/quotaApi.js'
 
 const STEPS = {
+  INTENT: 'intent',
   INPUT: 'input',
   LOADING: 'loading',
   RESULT: 'result',
@@ -24,7 +25,8 @@ function phaseForProgress(progress) {
 }
 
 export default function App() {
-  const [step, setStep] = useState(STEPS.INPUT)
+  const [step, setStep] = useState(STEPS.INTENT)
+  const [intent, setIntent] = useState(null)
   const [chatText, setChatText] = useState('')
   const [result, setResult] = useState(null)
   const [isTransitioning, setIsTransitioning] = useState(false)
@@ -50,11 +52,6 @@ export default function App() {
     else refreshQuota()
   }, [refreshQuota])
 
-  const handleShareBonus = useCallback(async () => {
-    const result = await claimShareBonus()
-    if (result.quota) setQuota(result.quota)
-  }, [])
-
   const transitionTo = useCallback((nextStep) => {
     setIsTransitioning(true)
     setTimeout(() => {
@@ -63,8 +60,13 @@ export default function App() {
     }, 280)
   }, [])
 
+  const handleIntentSelect = (nextIntent) => {
+    setIntent(nextIntent)
+    transitionTo(STEPS.INPUT)
+  }
+
   const handleSubmit = async () => {
-    if (!isValid) return
+    if (!isValid || !intent) return
 
     if (quota && !quota.canAnalyze) {
       setShareHighlight(true)
@@ -74,15 +76,7 @@ export default function App() {
       return
     }
 
-    const { anonymizedText, nameMap } = anonymizeChatText(chatText)
-    const { analyzeLocally } = await import('./utils/analyzeLocal.js')
-    const preview = scrubResultNames(analyzeLocally(anonymizedText, nameMap), nameMap)
-
-    setLoadingState({
-      preview,
-      progress: 22,
-      phase: '패턴 분석 OK · AI 분석 중...',
-    })
+    setLoadingState({ progress: 22, phase: '패턴 분석 OK · AI 분석 중...' })
     transitionTo(STEPS.LOADING)
 
     const progressTimer = setInterval(() => {
@@ -94,7 +88,7 @@ export default function App() {
     }, 1800)
 
     try {
-      const data = await analyzeChat(chatText)
+      const data = await analyzePreview(chatText, intent)
       clearInterval(progressTimer)
       if (data.quota) setQuota(data.quota)
       else await refreshQuota()
@@ -107,7 +101,7 @@ export default function App() {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
       clearInterval(progressTimer)
-      console.error('[analyze]', err)
+      console.error('[preview]', err)
       if (err?.code === 'QUOTA_EXCEEDED') {
         if (err.quota) setQuota(err.quota)
         setShareHighlight(true)
@@ -125,11 +119,12 @@ export default function App() {
   }
 
   const handleReset = () => {
+    setIntent(null)
     setChatText('')
     setResult(null)
     setLoadingState(null)
     setShareHighlight(false)
-    transitionTo(STEPS.INPUT)
+    transitionTo(STEPS.INTENT)
     refreshQuota()
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -163,6 +158,7 @@ export default function App() {
         <AdSlot variant="banner" className="mb-6" />
 
         <div className={isTransitioning ? 'animate-fade-out' : ''}>
+          {step === STEPS.INTENT && <IntentStep onSelect={handleIntentSelect} />}
           {step === STEPS.INPUT && (
             <InputStep
               chatText={chatText}
@@ -177,19 +173,12 @@ export default function App() {
           )}
           {step === STEPS.LOADING && (
             <LoadingStep
-              preview={loadingState?.preview}
               progress={loadingState?.progress ?? 0}
               phase={loadingState?.phase ?? ''}
             />
           )}
           {step === STEPS.RESULT && result && (
-            <ResultStep
-              result={result}
-              onReset={handleReset}
-              quota={quota}
-              onQuotaUpdate={handleQuotaUpdate}
-              onShareBonus={handleShareBonus}
-            />
+            <PreviewResultStep result={result} onReset={handleReset} />
           )}
         </div>
       </main>

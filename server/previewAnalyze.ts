@@ -1,0 +1,113 @@
+// Phase 2 — /api/preview route logic (docs/implementation_plan_v2.md §16.2,
+// §20 Phase 2). Mirrors server/analyze.js's shape (quota check happens in the
+// route, this function does the LLM work + usage logging + persistence) but
+// calls the new Relationship Engine (server/engine/pipeline/previewPipeline.ts)
+// instead of the v1 single-prompt analyzer. Kept as a separate module/route
+// rather than replacing server/analyze.js — see docs/implementation_plan_v2.md
+// §24.1's precedent for not deleting a still-referenced legacy path outright.
+import { getAnalysisResultRepository } from './db/repositories/analysisResultRepository.js'
+import { getUsageLogRepository } from './db/repositories/usageLogRepository.js'
+import { estimateCostUsd } from './db/pricing.js'
+import type { AnalysisIntent } from './engine/intent/types.js'
+import { runPreviewPipeline } from './engine/pipeline/previewPipeline.js'
+import type { PreviewNarrative, PreviewScoreResult } from './engine/pipeline/types.js'
+import type { ValidatedSignal } from './engine/signals/types.js'
+
+/** Deliberately does NOT default to a smaller token budget than
+ * llmSignalExtractor.ts's own DEFAULT_MAX_OUTPUT_TOKENS (4096). §26 flags a
+ * lower Preview-specific budget as something to measure and introduce later,
+ * but guessing a smaller number here without that measurement is actively
+ * dangerous, not just "unoptimized": confirmed live against samples/01-romantic-some.txt
+ * (32 messages, single chunk) that 2048 truncates the structured-output JSON
+ * mid-string ("Unterminated string in JSON") — the exact failure mode
+ * analysis_v1.md/§23.3 already documented for v1's original 4096 default,
+ * now reproduced at an even lower ceiling. A parse failure here silently
+ * yields zero signals (§8.3's "no evidence extracted at all" contract) rather
+ * than an error, so this kind of regression is invisible unless someone
+ * actually inspects the output — hence leaving this unset by default and
+ * only overridable via ANTHROPIC_PREVIEW_MAX_OUTPUT_TOKENS once real
+ * measurement (§26) justifies a specific smaller number. */
+const DEFAULT_PREVIEW_MAX_OUTPUT_TOKENS: number | undefined = undefined
+
+/** Mirrors llmSignalExtractor.ts's own DEFAULT_MODEL — used only to label the
+ * usage log entry accurately when ANTHROPIC_PREVIEW_MODEL/ANTHROPIC_MODEL
+ * aren't set, since `model` itself is left undefined in that case so the
+ * extractor resolves its own default rather than this module guessing one. */
+const FALLBACK_MODEL_LABEL = 'claude-sonnet-4-6'
+
+export interface PreviewAnalysisResult {
+  analysisId: string
+  preview: PreviewScoreResult
+  narrative: PreviewNarrative
+  topSignal: ValidatedSignal | null
+  analysisMode: string
+  windowLabel: string
+}
+
+export async function runPreviewAnalysis(
+  anonymizedText: string,
+  intent: AnalysisIntent,
+  deviceId: string | null,
+): Promise<PreviewAnalysisResult> {
+  // Left undefined unless explicitly overridden — llmSignalExtractor.ts then
+  // falls back to its own env var / measured default rather than this module
+  // guessing one (see DEFAULT_PREVIEW_MAX_OUTPUT_TOKENS's comment above).
+  const model = process.env.ANTHROPIC_PREVIEW_MODEL || process.env.ANTHROPIC_MODEL || undefined
+  const maxOutputTokens = process.env.ANTHROPIC_PREVIEW_MAX_OUTPUT_TOKENS
+    ? Number(process.env.ANTHROPIC_PREVIEW_MAX_OUTPUT_TOKENS)
+    : DEFAULT_PREVIEW_MAX_OUTPUT_TOKENS
+
+  const startedAt = Date.now()
+  let inputTokens = 0
+  let outputTokens = 0
+  let success = false
+  let errorMessage: string | null = null
+
+  try {
+    const result = await runPreviewPipeline({
+      text: anonymizedText,
+      sourceType: 'txt',
+      intent,
+      llmOptions: { model, maxOutputTokens },
+    })
+    inputTokens = result.usage.inputTokens
+    outputTokens = result.usage.outputTokens
+
+    const analysisId = await getAnalysisResultRepository().createPreview({
+      deviceId,
+      intent,
+      analysisMode: result.analysisMode.toUpperCase() as 'SNAPSHOT' | 'STANDARD' | 'DEEP',
+      windowLabel: result.preview.windowLabel,
+      processedChunkIds: result.processedChunkIds,
+      previewFields: { preview: result.preview, narrative: result.narrative, topSignal: result.topSignal },
+    })
+
+    success = true
+    return {
+      analysisId,
+      preview: result.preview,
+      narrative: result.narrative,
+      topSignal: result.topSignal,
+      analysisMode: result.analysisMode,
+      windowLabel: result.preview.windowLabel,
+    }
+  } catch (err) {
+    errorMessage = err instanceof Error ? err.message : String(err)
+    throw err
+  } finally {
+    const resolvedModelLabel = model ?? FALLBACK_MODEL_LABEL
+    void getUsageLogRepository()
+      .record({
+        deviceId,
+        callSite: 'relationship_preview',
+        model: resolvedModelLabel,
+        inputTokens,
+        outputTokens,
+        costEstimate: inputTokens || outputTokens ? estimateCostUsd(resolvedModelLabel, inputTokens, outputTokens) : 0,
+        durationMs: Date.now() - startedAt,
+        success,
+        errorMessage,
+      })
+      .catch((logErr) => console.warn('[usage-log]', logErr instanceof Error ? logErr.message : logErr))
+  }
+}
