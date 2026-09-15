@@ -1,6 +1,4 @@
-import { anonymizeChatText } from './parseChat.js'
 import { scrubResultNames } from './scrubResult.js'
-import { redactContactInfo } from './privacyRedaction.js'
 import { apiHeaders } from './deviceId.js'
 
 /**
@@ -12,17 +10,20 @@ import { apiHeaders } from './deviceId.js'
  * raw-count heuristic, incompatible with §9's opportunity-rate design) — a
  * failure here is surfaced to the caller instead of silently degrading.
  *
- * @param {string} rawText
- * @param {string} intent
+ * Phase 2.1 (Privacy Review, item 6): anonymization/redaction used to happen
+ * silently inside this function right before the fetch. It's now done once,
+ * earlier, by src/utils/privacyPreview.js's buildPrivacyPreview() — shown to
+ * the user in PrivacyReviewStep — and the *same* already-processed text and
+ * nameMap are passed in here, so what the user reviewed is exactly what gets
+ * sent (not a re-derived approximation of it).
+ *
+ * @param {{ anonymizedText: string, nameMap: Record<string, string>, intent: string }} params
  */
-export async function analyzePreview(rawText, intent) {
-  const { anonymizedText, nameMap } = anonymizeChatText(rawText)
-  const redactedText = redactContactInfo(scrubResultNames(anonymizedText, nameMap))
-
+export async function analyzePreview({ anonymizedText, nameMap, intent }) {
   const response = await fetch('/api/preview', {
     method: 'POST',
     headers: apiHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ text: redactedText, intent }),
+    body: JSON.stringify({ text: anonymizedText, intent }),
   })
 
   let data

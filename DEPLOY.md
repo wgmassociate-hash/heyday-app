@@ -58,10 +58,16 @@ git push -u origin main
 | `VITE_ADSENSE_SLOT_RECTANGLE` | `1234567890` | AdSense 광고 단위 (결과 화면 등) |
 | `VITE_ADSENSE_SLOT_LEADERBOARD` | `1234567890` | AdSense 광고 단위 |
 | `VITE_ADSENSE_SLOT_LOADING` | `1234567890` | AdSense 광고 단위 (**로딩 화면 전용**, 선택) |
+| `VITE_ADSENSE_SLOT_RESULT_TOP` | `1234567890` | AdSense 광고 단위 (**결과 화면 상단**) |
+| `VITE_ADSENSE_SLOT_RESULT_MIDDLE` | `1234567890` | AdSense 광고 단위 (**결과 화면 중단**) |
+| `VITE_ADSENSE_SLOT_RESULT_BOTTOM` | `1234567890` | AdSense 광고 단위 (**결과 화면 하단**) |
 
 > `VITE_ADSENSE_SLOT_LOADING`을 비우면 로딩 화면은 `RECTANGLE` 슬롯을 그대로 씁니다. 로딩 노출만 따로 보려면 AdSense에서 광고 단위를 하나 더 만들고 여기에 넣으세요.
+> `VITE_ADSENSE_SLOT_RESULT_TOP/MIDDLE/BOTTOM`은 서로 다른 슬롯이어야 위치별 성과 측정이 가능합니다 — 비워두면 (banner 슬롯으로 대체되지 않고) 그 위치만 placeholder로 표시됩니다.
 
 > AdSense ID는 **나중에** 넣어도 됨. 그때까지는 회색 “광고 영역” placeholder만 보임.
+
+> **Production 배포 전 체크리스트**: AdSense 대시보드에서 Auto Ads가 켜져 있는지 확인하세요. 이 앱은 Loading(1) + Result Top/Middle/Bottom(3) 총 4개의 수동(manual) 슬롯 전략을 사용합니다. Auto Ads가 켜져 있으면 이 수동 슬롯들과 별개로 광고가 추가로 자동 삽입되어 중복 노출될 수 있습니다.
 
 6. **Create Web Service** → 5~10분 기다리기
 7. `https://heydaystar-xxxx.onrender.com` 주소에서:

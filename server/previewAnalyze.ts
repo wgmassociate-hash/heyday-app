@@ -10,8 +10,9 @@ import { getUsageLogRepository } from './db/repositories/usageLogRepository.js'
 import { estimateCostUsd } from './db/pricing.js'
 import type { AnalysisIntent } from './engine/intent/types.js'
 import { runPreviewPipeline } from './engine/pipeline/previewPipeline.js'
-import type { PreviewNarrative, PreviewScoreResult } from './engine/pipeline/types.js'
+import type { PreviewNarrative, PreviewReport, PreviewScoreResult } from './engine/pipeline/types.js'
 import type { ValidatedSignal } from './engine/signals/types.js'
+import type { PaywallTeaser } from './engine/narrative/paywallTeaser.js'
 
 /** Deliberately does NOT default to a smaller token budget than
  * llmSignalExtractor.ts's own DEFAULT_MAX_OUTPUT_TOKENS (4096). §26 flags a
@@ -39,9 +40,16 @@ export interface PreviewAnalysisResult {
   analysisId: string
   preview: PreviewScoreResult
   narrative: PreviewNarrative
+  report: PreviewReport
+  alternateReport: PreviewReport | null
   topSignal: ValidatedSignal | null
+  paywallTeasers: PaywallTeaser[]
   analysisMode: string
   windowLabel: string
+  /** Phase 2.4 item 2 — the frontend result screen needs to echo back which
+   * question the user actually picked ("내가 선택한 질문") before showing
+   * report.directAnswer. */
+  intent: AnalysisIntent
 }
 
 export async function runPreviewAnalysis(
@@ -79,7 +87,14 @@ export async function runPreviewAnalysis(
       analysisMode: result.analysisMode.toUpperCase() as 'SNAPSHOT' | 'STANDARD' | 'DEEP',
       windowLabel: result.preview.windowLabel,
       processedChunkIds: result.processedChunkIds,
-      previewFields: { preview: result.preview, narrative: result.narrative, topSignal: result.topSignal },
+      previewFields: {
+        preview: result.preview,
+        narrative: result.narrative,
+        report: result.report,
+        alternateReport: result.alternateReport,
+        topSignal: result.topSignal,
+        paywallTeasers: result.paywallTeasers,
+      },
     })
 
     success = true
@@ -87,9 +102,13 @@ export async function runPreviewAnalysis(
       analysisId,
       preview: result.preview,
       narrative: result.narrative,
+      report: result.report,
+      alternateReport: result.alternateReport,
       topSignal: result.topSignal,
+      paywallTeasers: result.paywallTeasers,
       analysisMode: result.analysisMode,
       windowLabel: result.preview.windowLabel,
+      intent,
     }
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err)

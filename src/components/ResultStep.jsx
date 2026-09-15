@@ -1,3 +1,8 @@
+/** v1 legacy — no longer imported/rendered anywhere in the current v2 flow
+ * (App.jsx renders PreviewResultStep instead). Dead code, kept for reference
+ * only. Its 3 AdSlot instances (leaderboard/rectangle/banner below) are NOT
+ * part of the live ad placement policy (Loading + Result Top/Middle/Bottom) —
+ * don't treat them as a second, currently-active ad layout. */
 import { useRef } from 'react'
 import AdSlot from './AdSlot'
 import AffectionTrendChart from './AffectionTrendChart'

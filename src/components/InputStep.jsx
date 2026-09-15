@@ -16,6 +16,8 @@ export default function InputStep({
   onQuotaUpdate,
   shareHighlight = false,
   sharePanelRef,
+  sourceType,
+  onSourceTypeChange,
 }) {
   const speakers = chatText.trim() ? extractSpeakerNames(chatText) : []
   const hasText = chatText.trim().length > 0
@@ -54,7 +56,7 @@ export default function InputStep({
 
       <div className="max-w-xl mx-auto">
         <UsagePreview hidden={hasText} />
-        <PrivacyBadge />
+        <PrivacyBadge sourceType={sourceType} />
 
         <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 md:p-5 mb-4">
           <MobileImportPanel
@@ -62,6 +64,7 @@ export default function InputStep({
             onChange={onChange}
             onQuotaUpdate={onQuotaUpdate}
             onQuotaBlocked={() => onQuotaUpdate?.()}
+            onSourceTypeChange={onSourceTypeChange}
           />
 
           {anonymized && textHasSelfSpeaker(chatText) && (

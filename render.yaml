@@ -20,5 +20,13 @@ services:
         sync: false
       - key: VITE_ADSENSE_SLOT_LEADERBOARD
         sync: false
+      - key: VITE_ADSENSE_SLOT_LOADING
+        sync: false
+      - key: VITE_ADSENSE_SLOT_RESULT_TOP
+        sync: false
+      - key: VITE_ADSENSE_SLOT_RESULT_MIDDLE
+        sync: false
+      - key: VITE_ADSENSE_SLOT_RESULT_BOTTOM
+        sync: false
       - key: RATE_LIMIT_DISABLED
         sync: false

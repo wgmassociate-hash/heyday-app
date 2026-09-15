@@ -15,6 +15,19 @@ export function isQuotaDisabled() {
   return String(process.env.RATE_LIMIT_DISABLED || '').toLowerCase() === 'true'
 }
 
+/** Dev-only convenience so a developer running the app locally isn't blocked
+ * by the same 3-per-day cap real users see. Distinct from RATE_LIMIT_DISABLED
+ * above (which has no environment guard and is meant as a deliberate,
+ * environment-agnostic testing toggle): DEV_BYPASS_QUOTA is refused outright
+ * whenever NODE_ENV==='production', so leaving it set to true in a deployed
+ * environment's env vars by accident can never actually bypass quota there.
+ * Quota policy itself (limits, share bonus, reset timing) is untouched —
+ * this only decides whether assertCanUseQuota/consumeQuota enforce it. */
+export function isDevQuotaBypassed() {
+  if (process.env.NODE_ENV === 'production') return false
+  return String(process.env.DEV_BYPASS_QUOTA || '').toLowerCase() === 'true'
+}
+
 export function getKstDateString(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(date)
 }
@@ -63,14 +76,23 @@ export function getDisabledQuotaStatus() {
 }
 
 export async function getQuotaStatus(deviceId) {
-  if (isQuotaDisabled()) return getDisabledQuotaStatus()
+  // Dev bypass must short-circuit here too (not just assertCanUseQuota/
+  // consumeQuota below): the frontend's "오늘 횟수 소진" gate reads THIS
+  // endpoint's canAnalyze, not the /api/preview response, so a device
+  // already sitting at used>=maxAllowed stayed blocked in the UI even with
+  // DEV_BYPASS_QUOTA=true. Reuses the same getDisabledQuotaStatus() shape
+  // RATE_LIMIT_DISABLED already returns (canAnalyze:true, disabled:true) —
+  // every component gating on quota.canAnalyze/.disabled already handles it.
+  // Never reads or writes the stored record, so the real `used` count for
+  // this device is untouched.
+  if (isQuotaDisabled() || isDevQuotaBypassed()) return getDisabledQuotaStatus()
   const kstDate = getKstDateString()
   const record = await getQuotaRepository().getRecord(deviceId, kstDate)
   return buildQuotaStatus(record)
 }
 
 export async function assertCanUseQuota(deviceId) {
-  if (isQuotaDisabled()) {
+  if (isQuotaDisabled() || isDevQuotaBypassed()) {
     return { ok: true, status: getDisabledQuotaStatus() }
   }
 
@@ -83,7 +105,7 @@ export async function assertCanUseQuota(deviceId) {
 }
 
 export async function consumeQuota(deviceId) {
-  if (isQuotaDisabled()) {
+  if (isQuotaDisabled() || isDevQuotaBypassed()) {
     return { ok: true, status: getDisabledQuotaStatus() }
   }
 

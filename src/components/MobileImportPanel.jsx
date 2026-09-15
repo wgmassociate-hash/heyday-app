@@ -2,8 +2,13 @@ import { useState } from 'react'
 import ScreenshotImportPanel from './ScreenshotImportPanel'
 import { deliverChatText } from '../utils/deliverChatText.js'
 
-export default function MobileImportPanel({ chatText, onChange, onQuotaUpdate, onQuotaBlocked }) {
+export default function MobileImportPanel({ chatText, onChange, onQuotaUpdate, onQuotaBlocked, onSourceTypeChange }) {
   const [tab, setTab] = useState('screenshot')
+
+  const selectTab = (next) => {
+    setTab(next)
+    onSourceTypeChange?.(next)
+  }
   const hasText = chatText.trim().length > 0
   const lineCount = chatText.trim().split('\n').filter(Boolean).length
 
@@ -40,7 +45,7 @@ export default function MobileImportPanel({ chatText, onChange, onQuotaUpdate, o
           type="button"
           role="tab"
           aria-selected={tab === 'screenshot'}
-          onClick={() => setTab('screenshot')}
+          onClick={() => selectTab('screenshot')}
           className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all ${
             tab === 'screenshot'
               ? 'bg-white text-violet-700 shadow-sm ring-1 ring-violet-200'
@@ -54,7 +59,7 @@ export default function MobileImportPanel({ chatText, onChange, onQuotaUpdate, o
           type="button"
           role="tab"
           aria-selected={tab === 'text'}
-          onClick={() => setTab('text')}
+          onClick={() => selectTab('text')}
           className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all ${
             tab === 'text'
               ? 'bg-white text-sky-700 shadow-sm ring-1 ring-sky-200'

@@ -10,6 +10,9 @@ import { getConversationMeta, parseMessages } from '../messageModel/parseChatShi
 import { toStandardMessages } from '../messageModel/toStandardMessages.js'
 import type { EnrichedMessage, Message } from '../messageModel/types.js'
 import { buildPreviewNarrative } from '../narrative/previewNarrative.js'
+import { buildPaywallTeasers } from '../narrative/paywallTeaser.js'
+import { buildPreviewReport } from '../narrative/previewReport.js'
+import type { MessageLookup } from '../narrative/keySceneSelector.js'
 import { runScoreEngine } from '../score/scoreEngine.js'
 import { buildChunkPlan } from '../signals/chunker.js'
 import { mergeDuplicates, mergeDuplicatePairs, validateReciprocityPairs, validateSignals } from '../signals/evidenceValidator.js'
@@ -40,6 +43,19 @@ function buildDateMsById(enriched: EnrichedMessage[], raw: ReturnType<typeof par
   const map = new Map<string, number | null>()
   for (let i = 0; i < enriched.length; i++) {
     map.set(enriched[i].id, raw[i]?.dateMs ?? null)
+  }
+  return map
+}
+
+/** Phase 2.4 item 12 — "핵심 장면" needs the actual (already anonymized)
+ * message text a signal is grounded in, not just its `reason` paraphrase.
+ * Built from `windowMessages`, not the full conversation, since that's
+ * exactly the message set validated signals' messageIds resolve against
+ * (chunkPlan.ts's selectPreviewWindow mirrors previewChunks 1:1). */
+function buildMessageLookup(windowMessages: EnrichedMessage[]): MessageLookup {
+  const map: MessageLookup = new Map()
+  for (const message of windowMessages) {
+    map.set(message.id, { speakerId: message.speakerId, text: message.text })
   }
   return map
 }
@@ -104,6 +120,8 @@ export async function runPreviewPipeline(input: RunPreviewPipelineInput): Promis
     recentRomanceSignal: scoreResult.romance,
     initiativeRatioPreview: scoreResult.core4.conversationInitiationRatio,
     core4Preview: scoreResult.core4,
+    windowMessageCount: windowMessages.length,
+    recentRelationshipPosition: scoreResult.position,
     windowLabel,
     confidenceLabel: 'recent_window',
     scoreEngineVersion: scoreResult.scoreEngineVersion,
@@ -111,11 +129,22 @@ export async function runPreviewPipeline(input: RunPreviewPipelineInput): Promis
 
   const topSignal = selectTopSignal(input.intent, validatedSignals)
   const narrative = buildPreviewNarrative(preview, topSignal)
+  const paywallTeasers = buildPaywallTeasers(preview)
+  const { report, alternateReport } = buildPreviewReport({
+    intent: input.intent,
+    score: preview,
+    validatedSignals,
+    reciprocityPairs,
+    messages: buildMessageLookup(windowMessages),
+  })
 
   return {
     preview,
     narrative,
+    report,
+    alternateReport,
     topSignal,
+    paywallTeasers,
     analysisMode,
     intent: input.intent,
     processedChunkIds: previewChunks.map((chunk) => chunk.id),

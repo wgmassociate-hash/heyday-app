@@ -4,14 +4,7 @@
 // summaryOneLine string that omits it (§15.4's "하드코딩된 필수 요소").
 import type { ValidatedSignal } from '../signals/types.js'
 import type { PreviewNarrative, PreviewScoreResult } from '../pipeline/types.js'
-
-type ScoreBucket = 'low' | 'medium' | 'high'
-
-function bucketize(score: number): ScoreBucket {
-  if (score < 40) return 'low'
-  if (score < 70) return 'medium'
-  return 'high'
-}
+import { bucketize, type ScoreBucket } from './scoreBuckets.js'
 
 function evidenceClause(topSignal: ValidatedSignal | null): string {
   if (!topSignal) return ''

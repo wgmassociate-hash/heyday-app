@@ -34,3 +34,4 @@ server/db/prisma/migrations/dev.db*
 *.njsproj
 *.sln
 *.sw?
+.trace-scratch/

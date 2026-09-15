@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { getAdSenseConfig, isAdSenseConfigured } from '../utils/adsense.js'
+import { getAdSenseConfig, getSlotId, isAdSenseConfigured } from '../utils/adsense.js'
 
 const VARIANTS = {
   banner: {
@@ -24,14 +24,38 @@ const VARIANTS = {
     wrapper: 'w-full max-w-md mx-auto',
     slot: 'w-full min-h-[250px]',
     label: '로딩 화면',
+    debugLabel: 'Loading Ad',
     minHeight: 250,
+  },
+  // Ad placement restructure — Result 전용 3개 슬롯. PreviewResultStep.jsx는
+  // 자체 컨테이너가 max-w-xl이므로 그 폭에 맞춘다.
+  resultTop: {
+    wrapper: 'w-full max-w-xl mx-auto',
+    slot: 'w-full min-h-[90px] md:min-h-[100px]',
+    label: 'Result Top',
+    debugLabel: 'Result Top Ad',
+    minHeight: 90,
+  },
+  resultMiddle: {
+    wrapper: 'w-full max-w-xl mx-auto',
+    slot: 'w-full min-h-[90px] md:min-h-[100px]',
+    label: 'Result Middle',
+    debugLabel: 'Result Middle Ad',
+    minHeight: 90,
+  },
+  resultBottom: {
+    wrapper: 'w-full max-w-xl mx-auto',
+    slot: 'w-full min-h-[90px] md:min-h-[100px]',
+    label: 'Result Bottom',
+    debugLabel: 'Result Bottom Ad',
+    minHeight: 90,
   },
 }
 
 export default function AdSlot({ variant = 'banner', className = '' }) {
   const config = VARIANTS[variant] ?? VARIANTS.banner
   const { client, slots } = getAdSenseConfig()
-  const slotId = slots[variant] || slots.banner
+  const slotId = getSlotId(variant, slots)
   const active = isAdSenseConfigured(variant)
   const pushed = useRef(false)
 
@@ -54,7 +78,7 @@ export default function AdSlot({ variant = 'banner', className = '' }) {
         >
           <div className="text-center px-4">
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Advertisement</p>
-            <p className="text-sm text-gray-300 mt-1">{config.label} 광고 영역</p>
+            <p className="text-sm text-gray-300 mt-1">{config.debugLabel ?? `${config.label} 광고 영역`}</p>
           </div>
         </div>
       </div>

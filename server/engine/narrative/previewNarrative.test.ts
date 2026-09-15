@@ -21,6 +21,8 @@ function makeScore(temperature: number | null, romance: number): PreviewScoreRes
       conversationInitiationRatio: { ratioBySpeaker: { A: 0.5, B: 0.5 } },
       reciprocity: { score: null, confidence: 'insufficient', bySpeaker: {} },
     },
+    windowMessageCount: 50,
+    recentRelationshipPosition: { label: temperature === null ? 'insufficient_data' : 'still_forming' },
     windowLabel: WINDOW_LABEL,
     confidenceLabel: 'recent_window',
     scoreEngineVersion: 'test',

@@ -18,6 +18,7 @@ import { computePairOpportunity, computeReciprocity } from './reciprocity.js'
 import { runScoreEngine } from './scoreEngine.js'
 import type { IndividualScore } from './types.js'
 import { INTEREST_SIGNAL_CONFIG, RECIPROCITY_PAIR_CONFIG } from './weights.js'
+import { SignalExtractionResponseSchema } from '../signals/schema.js'
 
 /** Asserts a metric is judgeable and returns its numeric score — a null
  * here means a fixture is wrong (accidentally landed in the 'insufficient'
@@ -137,7 +138,20 @@ describe('score=null vs score=0 (Phase 1.2 audit finding #1)', () => {
     expect(result.confidence).toBe('insufficient')
   })
 
-  test('opportunity at the judgeable threshold with rate=1 -> full per-type weight share (Phase 1.1\'s no-floor fix still holds once judgeable)', () => {
+  test('opportunity at the judgeable threshold with rate=1, but only ONE signalType observed -> capped by the diversity floor, not a per-type weight share (Phase 2.3 supersedes the old per-signalType-weight-share design)', () => {
+    // Superseded invariant (removed, Phase 2.3): this used to assert the
+    // score equals exactly follow_up_question's own weight share (25/100),
+    // which was a direct consequence of the old per-signalType weighted-sum
+    // design this revision replaced (docs decision, scoring model comparison
+    // A/B/C/D) — that design is what let the score sit at a fixed, low
+    // ceiling regardless of the shape of the rest of the config table, and
+    // is not a product requirement in its own right. The pooled
+    // density+diversity model still bounds a single-signalType showing well
+    // below the maximum (see 'a single signalType repeated...' below); this
+    // fixture's exact 50 comes from message-family density fully saturating
+    // (100) but the diversity multiplier for one distinct type capping it at
+    // DIVERSITY_FLOOR=0.4 (55), weighted 90/10 against the restart family's
+    // untouched 0.
     const result = computeIndividualScore(
       repeat(5, () => makeSignal({ signalType: 'follow_up_question' })), // count=5=opportunity -> rate=1
       'personA',
@@ -146,8 +160,7 @@ describe('score=null vs score=0 (Phase 1.2 audit finding #1)', () => {
       5,
     )
     expect(result.confidence).not.toBe('insufficient')
-    // follow_up_question is 25/100 of Interest's weight.
-    expect(result.score).toBe(25)
+    expect(result.score).toBe(50)
   })
 
   test('within the judgeable range, a larger opportunity (lower rate) scores strictly lower', () => {
@@ -715,5 +728,204 @@ describe('computeConfidence (Phase 1.2 redesign, audit finding #2 — no evidenc
 
   test('everything comfortably large is high', () => {
     expect(computeConfidence({ opportunity: 50, messageCount: 200, sessionCount: 5 })).toBe('high')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Phase 2.2 — Short Conversation Result Calibration
+// ---------------------------------------------------------------------------
+
+describe('Core4 opportunity-less signalType exclusion (mirrors Reciprocity Phase 1.3)', () => {
+  test('a signalType with zero opportunity (e.g. no restart points in a single-session window) does not dilute the score', () => {
+    const opportunitiesWithRestarts = { actorMessageCount: 100, targetMessageCount: 20, restartOpportunityCount: 10 }
+    const opportunitiesNoRestarts = { actorMessageCount: 100, targetMessageCount: 20, restartOpportunityCount: 0 }
+    const signals = repeat(10, () => makeSignal({ signalType: 'follow_up_question' }))
+
+    const withRestartOpportunity = computeIndividualScore(signals, 'personA', opportunitiesWithRestarts, INTEREST_SIGNAL_CONFIG, 5)
+    const withoutRestartOpportunity = computeIndividualScore(signals, 'personA', opportunitiesNoRestarts, INTEREST_SIGNAL_CONFIG, 5)
+
+    // revives_conversation (opportunity=0) is excluded from the denominator
+    // entirely once there's no restart opportunity at all, instead of sitting
+    // there contributing 0 to the numerator while still counting its full
+    // weight against the score — so follow_up_question's saturated
+    // contribution alone reaches a strictly higher share of the (now smaller)
+    // weight total.
+    expect(requireScore(withoutRestartOpportunity)).toBeGreaterThan(requireScore(withRestartOpportunity))
+  })
+
+  test('every signalType still at rate=1 -> exactly 100 even with the exclusion fix in place (boundary unchanged)', () => {
+    const opportunities = { actorMessageCount: 100, targetMessageCount: 10, restartOpportunityCount: 10 }
+    const signals = INTEREST_SIGNAL_CONFIG.flatMap((cfg) => repeat(10, () => makeSignal({ signalType: cfg.signalType })))
+    const result = computeIndividualScore(signals, 'personA', opportunities, INTEREST_SIGNAL_CONFIG, 5)
+    expect(result.score).toBe(100)
+  })
+})
+
+describe('Core4 does not compress a real, LLM-validated conversation into single digits (item 8: no floor added)', () => {
+  test('several distinct validated Interest signalTypes together clear a single-digit score, without any score floor (zero evidence still scores exactly 0)', () => {
+    const opportunities = { actorMessageCount: 32, targetMessageCount: 16, restartOpportunityCount: 6 }
+    const modestButReal = computeIndividualScore(
+      [
+        ...repeat(1, () => makeSignal({ signalType: 'follow_up_question' })),
+        ...repeat(1, () => makeSignal({ signalType: 'remembers_past_detail' })),
+        ...repeat(1, () => makeSignal({ signalType: 'checks_on_feelings' })),
+      ],
+      'personA',
+      opportunities,
+      INTEREST_SIGNAL_CONFIG,
+      4,
+    )
+    expect(requireScore(modestButReal)).toBeGreaterThan(10)
+
+    // No floor: an actor with the exact same opportunity but zero validated
+    // signals still scores exactly 0, never bumped toward modestButReal's range.
+    const noEvidence = computeIndividualScore([], 'personA', opportunities, INTEREST_SIGNAL_CONFIG, 4)
+    expect(noEvidence.score).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Phase 2.3 — Interest/Intimacy Scoring Model Revision (Pooled Density +
+// Diversity, replacing the per-signalType weighted-sum design entirely — see
+// pooledSignalScore.ts's header for the full diagnosis and the A/B/C/D
+// comparison that led here). These are the product invariants approved for
+// this revision, replacing the old "each signalType contributes its own
+// exact weight share" invariant (superseded above).
+// ---------------------------------------------------------------------------
+
+describe('Phase 2.3 — pooled density + diversity product invariants', () => {
+  test('1. zero validated signals -> score is exactly 0 (never a floor)', () => {
+    const opportunities = { actorMessageCount: 40, targetMessageCount: 40, restartOpportunityCount: 10 }
+    const result = computeIndividualScore([], 'personA', opportunities, INTEREST_SIGNAL_CONFIG, 5)
+    expect(result.score).toBe(0)
+    expect(result.confidence).not.toBe('insufficient')
+  })
+
+  test('2. opportunity below the judgeable threshold -> score is null (unchanged confidence gate)', () => {
+    const result = computeIndividualScore(
+      repeat(3, () => makeSignal({ signalType: 'follow_up_question' })),
+      'personA',
+      { actorMessageCount: 100, targetMessageCount: 1, restartOpportunityCount: 1 },
+      INTEREST_SIGNAL_CONFIG,
+      5,
+    )
+    expect(result.score).toBeNull()
+    expect(result.confidence).toBe('insufficient')
+  })
+
+  test('3. identical input twice -> identical score (deterministic, no randomness anywhere in scoring)', () => {
+    const opportunities = { actorMessageCount: 40, targetMessageCount: 40, restartOpportunityCount: 10 }
+    const signals = [
+      ...repeat(3, () => makeSignal({ signalType: 'follow_up_question' })),
+      ...repeat(2, () => makeSignal({ signalType: 'remembers_past_detail' })),
+    ]
+    const a = computeIndividualScore(signals, 'personA', opportunities, INTEREST_SIGNAL_CONFIG, 5)
+    const b = computeIndividualScore(signals, 'personA', opportunities, INTEREST_SIGNAL_CONFIG, 5)
+    expect(a).toEqual(b)
+  })
+
+  test('4. a single signalType repeated at maximum rate never reaches 90-100 (diversity floor caps it)', () => {
+    const opportunities = { actorMessageCount: 40, targetMessageCount: 20, restartOpportunityCount: 10 }
+    const signals = repeat(40, () => makeSignal({ signalType: 'follow_up_question' })) // count >> opportunity, rate clamps to 1
+    const result = computeIndividualScore(signals, 'personA', opportunities, INTEREST_SIGNAL_CONFIG, 5)
+    expect(requireScore(result)).toBeLessThan(90)
+  })
+
+  test('5. several distinct signalTypes score higher than one signalType repeated the same total number of times', () => {
+    const opportunities = { actorMessageCount: 40, targetMessageCount: 20, restartOpportunityCount: 10 }
+    const oneType = repeat(12, () => makeSignal({ signalType: 'follow_up_question' }))
+    const fourTypes = [
+      ...repeat(3, () => makeSignal({ signalType: 'follow_up_question' })),
+      ...repeat(3, () => makeSignal({ signalType: 'remembers_past_detail' })),
+      ...repeat(3, () => makeSignal({ signalType: 'checks_on_feelings' })),
+      ...repeat(3, () => makeSignal({ signalType: 'specific_interest_expression' })),
+    ]
+    const single = computeIndividualScore(oneType, 'personA', opportunities, INTEREST_SIGNAL_CONFIG, 5)
+    const multi = computeIndividualScore(fourTypes, 'personA', opportunities, INTEREST_SIGNAL_CONFIG, 5)
+    expect(requireScore(multi)).toBeGreaterThan(requireScore(single))
+  })
+
+  test('6. 3-4 distinct signalTypes at a strong (not saturated-to-1) rate reaches 70-90+, a realistically reachable state', () => {
+    const opportunities = { actorMessageCount: 40, targetMessageCount: 20, restartOpportunityCount: 10 }
+    const signals = [
+      ...repeat(4, () => makeSignal({ signalType: 'follow_up_question' })),
+      ...repeat(4, () => makeSignal({ signalType: 'remembers_past_detail' })),
+      ...repeat(4, () => makeSignal({ signalType: 'checks_on_feelings' })),
+      ...repeat(4, () => makeSignal({ signalType: 'specific_interest_expression' })),
+    ] // 16 signals / 20 target messages = 0.8 rate, 4 distinct types
+    const result = computeIndividualScore(signals, 'personA', opportunities, INTEREST_SIGNAL_CONFIG, 5)
+    expect(requireScore(result)).toBeGreaterThanOrEqual(70)
+  })
+
+  test('7. short conversation with exactly one real signal does not score an inflated number', () => {
+    const opportunities = { actorMessageCount: 5, targetMessageCount: 5, restartOpportunityCount: 5 }
+    const result = computeIndividualScore(
+      [makeSignal({ signalType: 'follow_up_question' })],
+      'personA',
+      opportunities,
+      INTEREST_SIGNAL_CONFIG,
+      2,
+    )
+    expect(requireScore(result)).toBeLessThan(40)
+  })
+
+  test('8. an unavailable opportunity family (0 opportunity) is excluded from both numerator and denominator, never dragging the score down', () => {
+    const withRestartOpportunity = computeIndividualScore(
+      repeat(10, () => makeSignal({ signalType: 'follow_up_question' })),
+      'personA',
+      { actorMessageCount: 100, targetMessageCount: 20, restartOpportunityCount: 10 },
+      INTEREST_SIGNAL_CONFIG,
+      5,
+    )
+    const withoutRestartOpportunity = computeIndividualScore(
+      repeat(10, () => makeSignal({ signalType: 'follow_up_question' })),
+      'personA',
+      { actorMessageCount: 100, targetMessageCount: 20, restartOpportunityCount: 0 },
+      INTEREST_SIGNAL_CONFIG,
+      5,
+    )
+    expect(requireScore(withoutRestartOpportunity)).toBeGreaterThan(requireScore(withRestartOpportunity))
+  })
+
+  test('9. the restart-based family (revives_conversation) and the message-based family never share a denominator — spamming one cannot inflate the other', () => {
+    const opportunities = { actorMessageCount: 100, targetMessageCount: 100, restartOpportunityCount: 100 }
+    const onlyRevives = repeat(50, () => makeSignal({ signalType: 'revives_conversation' }))
+    const result = computeIndividualScore(onlyRevives, 'personA', opportunities, INTEREST_SIGNAL_CONFIG, 5)
+    // The message-based family (90/100 of the weight) has zero of its own 6
+    // signalTypes present, so it must stay at 0 regardless of how saturated
+    // the unrelated restart family is — capping the overall score far below
+    // what a genuinely message-family-saturated conversation would reach.
+    expect(requireScore(result)).toBeLessThan(15)
+  })
+
+  test('10. LLM structured-output schema still has no numeric score/probability field (unaffected by this scoring model revision)', () => {
+    // Re-affirms schema.test.ts's existing (more thorough, walks the full
+    // zod shape) coverage in this revision's own invariant list per docs
+    // decision item 7 #10 — the scoring model change here never touched
+    // signals/schema.ts, only how already-extracted signals are aggregated.
+    const shape = SignalExtractionResponseSchema.shape
+    expect(Object.keys(shape)).toEqual(['relationType', 'signals', 'reciprocityPairs'])
+  })
+})
+
+describe('Temperature null when one side dominates almost the entire conversation (truly_insufficient trigger)', () => {
+  test('one speaker sends nearly all messages -> mutual Interest/Intimacy and Temperature are null, not a distorted low number', () => {
+    const codeFeatures = makeCodeFeatures({
+      messageCountBySpeaker: { personA: 48, personB: 2 },
+      turnInitiationCounts: { personA: 20, personB: 1 },
+      questionMessageCountBySpeaker: { personA: 10, personB: 0 },
+      planProposalMessageCountBySpeaker: { personA: 0, personB: 0 },
+      restartOpportunityCount: 3,
+      sessionCount: 1,
+    })
+    const result = runScoreEngine({ codeFeatures, validatedSignals: [], reciprocityPairs: [] })
+    // personB's opportunity as a *target*/*actor* (2 messages) is below
+    // MIN_JUDGEABLE_OPPORTUNITY, so personA's Interest-toward-personB and
+    // personB's own Interest/Intimacy are null -> combineMutual nulls out
+    // mutual Interest/Intimacy -> Temperature drops below its minimum
+    // component-weight coverage and is null too (previewSufficiency.js's
+    // getPreviewAnalyzability then reports this as 'truly_insufficient').
+    expect(result.temperature.score).toBeNull()
+    expect(result.temperature.confidence).toBe('insufficient')
   })
 })

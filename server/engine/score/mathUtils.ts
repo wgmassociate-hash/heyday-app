@@ -11,7 +11,13 @@ export const MIN_OPPORTUNITY_DIVISOR = 1
 
 /** Rate roughly this far into [0,1] already captures most of a signalType's
  * weight; further repetition keeps adding less. Tunable — see
- * score/scoreEngine.invariant.test.ts's saturation invariants. */
+ * score/scoreEngine.invariant.test.ts's saturation invariants.
+ *
+ * One saturation policy for the whole engine (Phase 2.3 decision — the
+ * Phase 2.2 per-metric INDIVIDUAL_SIGNAL_SATURATION_TAU override was removed
+ * once score/pooledSignalScore.ts's pooled density + diversity model made it
+ * unnecessary: that override was compensating for Interest/Intimacy's old
+ * per-signalType split, not for anything about the saturation curve itself). */
 export const SATURATION_TAU = 0.5
 
 export function clamp(value: number, min: number, max: number): number {

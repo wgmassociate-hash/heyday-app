@@ -1,16 +1,18 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import AdSlot from './components/AdSlot'
 import IntentStep from './components/IntentStep'
 import InputStep from './components/InputStep'
+import PrivacyReviewStep from './components/PrivacyReviewStep'
 import LoadingStep from './components/LoadingStep'
 import PreviewResultStep from './components/PreviewResultStep'
 import QuotaBadge from './components/QuotaBadge'
 import { analyzePreview } from './utils/previewApi.js'
 import { fetchQuota } from './utils/quotaApi.js'
+import { buildPrivacyPreview } from './utils/privacyPreview.js'
 
 const STEPS = {
   INTENT: 'intent',
   INPUT: 'input',
+  PRIVACY_REVIEW: 'privacy_review',
   LOADING: 'loading',
   RESULT: 'result',
 }
@@ -28,6 +30,8 @@ export default function App() {
   const [step, setStep] = useState(STEPS.INTENT)
   const [intent, setIntent] = useState(null)
   const [chatText, setChatText] = useState('')
+  const [sourceType, setSourceType] = useState('screenshot') // matches MobileImportPanel's default tab
+  const [privacyPreview, setPrivacyPreview] = useState(null)
   const [result, setResult] = useState(null)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [loadingState, setLoadingState] = useState(null)
@@ -65,7 +69,12 @@ export default function App() {
     transitionTo(STEPS.INPUT)
   }
 
-  const handleSubmit = async () => {
+  // Phase 2.1 — Privacy Review (item 6/7): submitting from InputStep no
+  // longer starts analysis directly. It first computes what will actually be
+  // sent (anonymized/redacted, same pipeline analyzePreview() used to run
+  // silently) and shows it for confirmation — quota is still checked here so
+  // a blocked user sees the share panel instead of an empty review screen.
+  const handleGoToPrivacyReview = () => {
     if (!isValid || !intent) return
 
     if (quota && !quota.canAnalyze) {
@@ -75,6 +84,17 @@ export default function App() {
       }, 100)
       return
     }
+
+    setPrivacyPreview(buildPrivacyPreview(chatText))
+    transitionTo(STEPS.PRIVACY_REVIEW)
+  }
+
+  const handleBackFromPrivacyReview = () => {
+    transitionTo(STEPS.INPUT)
+  }
+
+  const handleConfirmPrivacyReview = async () => {
+    if (!privacyPreview || !intent) return
 
     setLoadingState({ progress: 22, phase: '패턴 분석 OK · AI 분석 중...' })
     transitionTo(STEPS.LOADING)
@@ -88,7 +108,11 @@ export default function App() {
     }, 1800)
 
     try {
-      const data = await analyzePreview(chatText, intent)
+      const data = await analyzePreview({
+        anonymizedText: privacyPreview.anonymizedText,
+        nameMap: privacyPreview.nameMap,
+        intent,
+      })
       clearInterval(progressTimer)
       if (data.quota) setQuota(data.quota)
       else await refreshQuota()
@@ -121,11 +145,20 @@ export default function App() {
   const handleReset = () => {
     setIntent(null)
     setChatText('')
+    setPrivacyPreview(null)
     setResult(null)
     setLoadingState(null)
     setShareHighlight(false)
     transitionTo(STEPS.INTENT)
     refreshQuota()
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Phase 2.1 — Sufficiency CTA (item 2): "대화 더 추가하기" goes back to
+  // InputStep with the existing chatText/intent intact (unlike handleReset)
+  // so the user can paste more conversation instead of starting over.
+  const handleAddMoreConversation = () => {
+    transitionTo(STEPS.INPUT)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -155,20 +188,32 @@ export default function App() {
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-6 md:py-8">
-        <AdSlot variant="banner" className="mb-6" />
-
+        {/* Ad placement restructure — the always-mounted top banner (shown on
+         * every step regardless of content) was removed here. Ads now live
+         * only where there's real content to justify them: Loading (1) and
+         * Result (3), inside their own step components. */}
         <div className={isTransitioning ? 'animate-fade-out' : ''}>
           {step === STEPS.INTENT && <IntentStep onSelect={handleIntentSelect} />}
           {step === STEPS.INPUT && (
             <InputStep
               chatText={chatText}
               onChange={setChatText}
-              onSubmit={handleSubmit}
+              onSubmit={handleGoToPrivacyReview}
               isValid={isValid}
               quota={quota}
               onQuotaUpdate={handleQuotaUpdate}
               shareHighlight={shareHighlight}
               sharePanelRef={sharePanelRef}
+              sourceType={sourceType}
+              onSourceTypeChange={setSourceType}
+            />
+          )}
+          {step === STEPS.PRIVACY_REVIEW && privacyPreview && (
+            <PrivacyReviewStep
+              privacyPreview={privacyPreview}
+              sourceType={sourceType}
+              onConfirm={handleConfirmPrivacyReview}
+              onBack={handleBackFromPrivacyReview}
             />
           )}
           {step === STEPS.LOADING && (
@@ -178,7 +223,7 @@ export default function App() {
             />
           )}
           {step === STEPS.RESULT && result && (
-            <PreviewResultStep result={result} onReset={handleReset} />
+            <PreviewResultStep result={result} onReset={handleReset} onAddMoreConversation={handleAddMoreConversation} />
           )}
         </div>
       </main>
