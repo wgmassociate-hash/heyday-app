@@ -4,9 +4,21 @@
 // quota/usage state to empty defaults instead of surfacing as an error.
 //
 // Policy:
-//   - DATABASE_URL unset            → use the file store directly (1.0
+//   - DATABASE_URL unset, NODE_ENV!=production
+//                                   → use the file store directly (1.0
 //                                     compatibility path — this is not a
 //                                     "failure", it's "no DB configured").
+//   - DATABASE_URL unset, NODE_ENV=production
+//                                   → ALWAYS throw DatabaseUnavailableError.
+//                                     Production Closing hard guard (V2): an
+//                                     operator forgetting to set DATABASE_URL
+//                                     must never silently degrade to Render's
+//                                     ephemeral filesystem (wiped on every
+//                                     restart/redeploy) — that's exactly the
+//                                     failure mode the Postgres migration was
+//                                     built to eliminate, so "not configured"
+//                                     gets treated identically to "configured
+//                                     but unreachable" in production.
 //   - DATABASE_URL set, call fails, NODE_ENV=production
 //                                   → ALWAYS throw DatabaseUnavailableError.
 //                                     File fallback is never allowed in prod,
@@ -34,6 +46,25 @@ export function isProduction(): boolean {
 export function isFileFallbackAllowed(): boolean {
   if (isProduction()) return false
   return String(process.env.ALLOW_FILE_DB_FALLBACK || '').toLowerCase() === 'true'
+}
+
+/** True when this environment may use the on-disk file store as a repository
+ * backend for the "DATABASE_URL isn't set at all" case. Only ever true
+ * outside production — see the file-header note on why production must
+ * treat "unconfigured" exactly like "configured but unreachable". */
+export function isFileStoreAllowedWhenUnconfigured(): boolean {
+  return !isProduction()
+}
+
+/** Builds the same DatabaseUnavailableError a failed Postgres call would
+ * throw, for the "DATABASE_URL isn't set at all, and this is production"
+ * case — so every caller (route handlers, error middleware) that already
+ * checks `isDatabaseUnavailable(err)` handles this identically to a real
+ * outage (503, code: DATABASE_UNAVAILABLE) without a separate code path. */
+export function unconfiguredDatabaseError(context: string): DatabaseUnavailableError {
+  return new DatabaseUnavailableError(
+    new Error(`[${context}] DATABASE_URL이 설정되지 않았습니다`),
+  )
 }
 
 let warned = false

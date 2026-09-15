@@ -7,9 +7,19 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
 import { getAnalysisResultRepository, PREVIEW_TTL_HOURS } from "./analysisResultRepository.js";
+import { DatabaseUnavailableError } from "../fallbackPolicy.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FALLBACK_DIR = join(__dirname, "../../data/analysis-results");
+
+const ORIGINAL_ENV = { ...process.env };
+
+function setEnv(env: Record<string, string | undefined>) {
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
 
 const createdIds: string[] = [];
 
@@ -93,5 +103,28 @@ describe("analysisResultRepository (file fallback)", () => {
     expect(removed).toBeGreaterThanOrEqual(1);
     expect(await repo.findById(expiredId)).toBeNull();
     expect(await repo.findById(freshId)).not.toBeNull();
+  });
+});
+
+describe("analysisResultRepository (production hard guard — V2 Production Closing)", () => {
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  test("production + DATABASE_URL unset never falls back to the file store", async () => {
+    setEnv({ NODE_ENV: "production", DATABASE_URL: undefined });
+    const repo = getAnalysisResultRepository();
+
+    await expect(repo.createPreview(samplePreview())).rejects.toThrow(DatabaseUnavailableError);
+    await expect(repo.findById("anything")).rejects.toThrow(DatabaseUnavailableError);
+    await expect(repo.purgeExpired(new Date())).rejects.toThrow(DatabaseUnavailableError);
+  });
+
+  test("non-production + DATABASE_URL unset still uses the file store (unchanged)", async () => {
+    setEnv({ NODE_ENV: "development", DATABASE_URL: undefined });
+    const repo = getAnalysisResultRepository();
+    const id = await repo.createPreview(samplePreview());
+    createdIds.push(id);
+    expect(await repo.findById(id)).not.toBeNull();
   });
 });

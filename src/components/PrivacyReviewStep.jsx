@@ -6,7 +6,7 @@
  * gated behind payment (item 7) — this screen has no quota/paywall checks of
  * its own.
  */
-export default function PrivacyReviewStep({ privacyPreview, sourceType, onConfirm, onBack }) {
+export default function PrivacyReviewStep({ privacyPreview, sourceType, onConfirm, onBack, isSubmitting = false }) {
   const { anonymizedText, nameChanges, phoneRedacted, emailRedacted } = privacyPreview
   const lines = anonymizedText.split('\n').filter((line) => line.trim())
   const previewLines = lines.slice(0, 5)
@@ -72,16 +72,18 @@ export default function PrivacyReviewStep({ privacyPreview, sourceType, onConfir
         <button
           type="button"
           onClick={onBack}
-          className="flex-1 py-3 rounded-2xl font-bold text-sm bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+          disabled={isSubmitting}
+          className="flex-1 py-3 rounded-2xl font-bold text-sm bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           ↩ 돌아가서 수정
         </button>
         <button
           type="button"
           onClick={onConfirm}
-          className="flex-1 py-3 rounded-2xl font-black text-sm bg-gradient-to-r from-brand-500 to-violet-500 text-white shadow-lg shadow-brand-200/80"
+          disabled={isSubmitting}
+          className="flex-1 py-3 rounded-2xl font-black text-sm bg-gradient-to-r from-brand-500 to-violet-500 text-white shadow-lg shadow-brand-200/80 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          이대로 분석 시작
+          {isSubmitting ? '분석 시작하는 중…' : '이대로 분석 시작'}
         </button>
       </div>
     </div>

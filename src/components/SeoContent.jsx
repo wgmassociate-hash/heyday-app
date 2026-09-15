@@ -118,10 +118,11 @@ export default function SeoContent() {
               </h3>
               <div className="prose prose-gray text-gray-600 leading-relaxed space-y-4 text-sm md:text-base">
                 <p>
-                  heydaystar 카톡 밀당 감정 분석기는 사용자의 프라이버시를 최우선으로
-                  설계되었습니다. 대화 내용은 <strong>서버에 저장되지 않으며</strong>, 분석
-                  요청 시 브라우저 내에서 실명이 [인물A], [인물B] 형태로 자동 익명화된 후
-                  AI API로 전송됩니다.
+                  heydaystar 카톡 밀당 감정 분석기는 사용자의 프라이버시를 고려해
+                  설계되었습니다. 이름·전화번호·이메일 등 식별정보는 가능한 범위에서
+                  [인물A], [인물B] 형태로 가린 뒤 분석을 위해 서버 및 AI 처리 서비스로
+                  전송되며, <strong>대화 원문은 분석 후 보관하지 않습니다.</strong> 다만
+                  모든 개인정보가 완전히 제거된다고 보장할 수는 없습니다.
                 </p>
                 <p>
                   <strong>올바른 이용 방법:</strong> 카카오톡 앱에서 대화방 → 메뉴(≡) →

@@ -52,6 +52,7 @@ git push -u origin main
 |-----|--------------|---------|
 | `NODE_ENV` | `production` | 그대로 입력 |
 | `ANTHROPIC_API_KEY` | `sk-ant-...` | Anthropic 콘솔 |
+| `DATABASE_URL` | `postgresql://...` | Render → **New +** → **PostgreSQL** (무료 플랜 가능) 생성 후 Internal Database URL 복사 |
 | `ADSENSE_PUBLISHER_ID` | `pub-1234...` 또는 `ca-pub-1234...` | AdSense 계정 정보 |
 | `VITE_ADSENSE_CLIENT` | `ca-pub-1234...` | AdSense 게시자 ID |
 | `VITE_ADSENSE_SLOT_BANNER` | `1234567890` | AdSense 광고 단위 |
@@ -66,6 +67,10 @@ git push -u origin main
 > `VITE_ADSENSE_SLOT_RESULT_TOP/MIDDLE/BOTTOM`은 서로 다른 슬롯이어야 위치별 성과 측정이 가능합니다 — 비워두면 (banner 슬롯으로 대체되지 않고) 그 위치만 placeholder로 표시됩니다.
 
 > AdSense ID는 **나중에** 넣어도 됨. 그때까지는 회색 “광고 영역” placeholder만 보임.
+
+> **`DATABASE_URL`은 Production에서 필수입니다 (DB 테이블은 배포 시 자동으로 생성됩니다).** 비워두거나, 넣었는데 연결 문자열이 틀렸거나 DB가 꺼져 있으면 — 이 앱은 (1.0과 달리) **조용히 파일 저장소로 넘어가지 않습니다.** `NODE_ENV=production`에서는 두 경우 모두 분석/OCR/quota 요청이 전부 **503 오류**를 반환합니다. 의도된 동작입니다(비용·quota 상태를 조용히 잃어버리거나 Render의 휘발성 파일에 저장하는 대신, 문제를 눈에 보이게 만듦) — 배포 후 이 증상이 보이면 `DATABASE_URL` 값부터 확인하세요.
+>
+> **`RATE_LIMIT_DISABLED`는 절대 추가하지 마세요.** 이 값을 `true`로 설정하면 하루 사용 횟수 제한(device quota) 자체가 완전히 꺼져서 Anthropic API 비용이 무제한으로 발생할 수 있습니다. 개발 중 테스트할 때만 로컬 `.env`에서 쓰는 값입니다. (참고: `IP_RATE_LIMIT_MAX`/`IP_RATE_LIMIT_WINDOW_MS`라는 별도의 IP 단위 방어선이 있는데, 이건 `RATE_LIMIT_DISABLED`와 무관하게 항상 동작하며 기본값만으로도 충분히 안전합니다 — 굳이 넣지 않아도 됩니다.)
 
 > **Production 배포 전 체크리스트**: AdSense 대시보드에서 Auto Ads가 켜져 있는지 확인하세요. 이 앱은 Loading(1) + Result Top/Middle/Bottom(3) 총 4개의 수동(manual) 슬롯 전략을 사용합니다. Auto Ads가 켜져 있으면 이 수동 슬롯들과 별개로 광고가 추가로 자동 삽입되어 중복 노출될 수 있습니다.
 

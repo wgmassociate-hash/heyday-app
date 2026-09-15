@@ -23,10 +23,19 @@ const {
 } = await import('./quota.js')
 const { corsOriginCallback } = await import('./corsConfig.ts')
 const { DatabaseUnavailableError } = await import('./db/fallbackPolicy.ts')
+const { ipRateLimitMiddleware } = await import('./ipRateLimit.ts')
 
 const app = express()
 const PORT = process.env.PORT || 3001
 const isProd = process.env.NODE_ENV === 'production'
+
+// Render (and most PaaS hosts) put the app behind exactly one reverse proxy —
+// trust its X-Forwarded-For so req.ip below is the actual visitor's address,
+// not the proxy's. Without this, ipRateLimitMiddleware would key every
+// visitor on the same internal proxy IP and rate-limit everyone together.
+app.set('trust proxy', 1)
+
+const costlyRouteRateLimit = ipRateLimitMiddleware()
 
 /** True for a Postgres outage that the fallback policy refused to hide
  * (docs/implementation_plan_v2.md §Phase 0.5 fallback policy) — surfaced as
@@ -85,7 +94,7 @@ app.post('/api/quota/share', asyncHandler(async (req, res) => {
   res.json({ ok: true, quota: result.status })
 }))
 
-app.post('/api/ocr-screenshots', asyncHandler(async (req, res) => {
+app.post('/api/ocr-screenshots', costlyRouteRateLimit, asyncHandler(async (req, res) => {
   const { images } = req.body ?? {}
   const deviceId = parseDeviceId(req)
 
@@ -124,7 +133,7 @@ app.post('/api/ocr-screenshots', asyncHandler(async (req, res) => {
   }
 }))
 
-app.post('/api/analyze', asyncHandler(async (req, res) => {
+app.post('/api/analyze', costlyRouteRateLimit, asyncHandler(async (req, res) => {
   // 2.0 Phase 0: the client no longer sends `nameMap` — it now redacts real
   // names (and phone numbers/emails) from the message body itself before this
   // request is ever made (src/utils/anonymize.js), so the server has nothing
@@ -195,7 +204,7 @@ app.post('/api/analyze', asyncHandler(async (req, res) => {
   }
 }))
 
-app.post('/api/preview', asyncHandler(async (req, res) => {
+app.post('/api/preview', costlyRouteRateLimit, asyncHandler(async (req, res) => {
   // Phase 2 — Free Preview (docs/implementation_plan_v2.md §16.2). Same
   // privacy contract as /api/analyze above: the client has already redacted
   // names/phone numbers/emails from `text` before this request is made;

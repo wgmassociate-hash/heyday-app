@@ -14,7 +14,7 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getPrismaClient } from "../prismaClient.js";
-import { withFallbackPolicy } from "../fallbackPolicy.js";
+import { isFileStoreAllowedWhenUnconfigured, unconfiguredDatabaseError, withFallbackPolicy } from "../fallbackPolicy.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FALLBACK_LOG_PATH = join(__dirname, "../../data/usage-log.jsonl");
@@ -60,8 +60,19 @@ const prismaUsageLogRepository: UsageLogRepository = {
   },
 };
 
+/** See quotaRepository.ts's unconfiguredQuotaRepository for why production
+ * rejects instead of silently switching to the file log when DATABASE_URL
+ * isn't set. Usage logging is best-effort at every call site (they .catch()
+ * this rather than fail the user's request), so this only ever surfaces in
+ * server logs, never as a user-facing error. */
+const unconfiguredUsageLogRepository: UsageLogRepository = {
+  record: () => Promise.reject(unconfiguredDatabaseError("usage-log")),
+};
+
 export function getUsageLogRepository(): UsageLogRepository {
-  if (!process.env.DATABASE_URL) return fileUsageLogRepository;
+  if (!process.env.DATABASE_URL) {
+    return isFileStoreAllowedWhenUnconfigured() ? fileUsageLogRepository : unconfiguredUsageLogRepository;
+  }
 
   return {
     record: (entry) =>

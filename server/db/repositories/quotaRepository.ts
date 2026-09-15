@@ -13,7 +13,7 @@
 // is untouched except that it now awaits this repository instead of calling
 // readStore()/writeStore() synchronously.
 import { getPrismaClient } from "../prismaClient.js";
-import { withFallbackPolicy } from "../fallbackPolicy.js";
+import { isFileStoreAllowedWhenUnconfigured, unconfiguredDatabaseError, withFallbackPolicy } from "../fallbackPolicy.js";
 // Plain JS, no ambient types (allowJs handles this) — kept exactly as in 1.0.
 import { readStore, writeStore } from "../../quotaStore.js";
 
@@ -81,13 +81,23 @@ const prismaQuotaRepository: QuotaRepository = {
   },
 };
 
+/** Every method rejects with DatabaseUnavailableError — used in production
+ * when DATABASE_URL isn't set at all, so callers get the exact same 503 they'd
+ * get from a real Postgres outage instead of a silent file-store switch. */
+const unconfiguredQuotaRepository: QuotaRepository = {
+  getRecord: () => Promise.reject(unconfiguredDatabaseError("quota")),
+  saveRecord: () => Promise.reject(unconfiguredDatabaseError("quota")),
+};
+
 /**
  * Prisma-first quota repository. This is the only export server/quota.js
  * should use. See the fallback policy note at the top of this file for what
  * happens when DATABASE_URL is set but Postgres is unreachable.
  */
 export function getQuotaRepository(): QuotaRepository {
-  if (!process.env.DATABASE_URL) return fileQuotaRepository;
+  if (!process.env.DATABASE_URL) {
+    return isFileStoreAllowedWhenUnconfigured() ? fileQuotaRepository : unconfiguredQuotaRepository;
+  }
 
   return {
     getRecord: (deviceId, kstDate) =>

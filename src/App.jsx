@@ -35,6 +35,7 @@ export default function App() {
   const [result, setResult] = useState(null)
   const [isTransitioning, setIsTransitioning] = useState(false)
   const [loadingState, setLoadingState] = useState(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [quota, setQuota] = useState(null)
   const [shareHighlight, setShareHighlight] = useState(false)
   const sharePanelRef = useRef(null)
@@ -94,7 +95,11 @@ export default function App() {
   }
 
   const handleConfirmPrivacyReview = async () => {
-    if (!privacyPreview || !intent) return
+    // Guards against a double-click firing two /api/preview requests (each
+    // consuming a quota unit) before transitionTo's 280ms delay unmounts
+    // this screen's confirm button.
+    if (!privacyPreview || !intent || isSubmitting) return
+    setIsSubmitting(true)
 
     setLoadingState({ progress: 22, phase: '패턴 분석 OK · AI 분석 중...' })
     transitionTo(STEPS.LOADING)
@@ -139,6 +144,7 @@ export default function App() {
       alert(`분석 중 오류: ${err?.message || '알 수 없는 오류'}`)
     } finally {
       setTimeout(() => setLoadingState(null), 400)
+      setIsSubmitting(false)
     }
   }
 
@@ -214,6 +220,7 @@ export default function App() {
               sourceType={sourceType}
               onConfirm={handleConfirmPrivacyReview}
               onBack={handleBackFromPrivacyReview}
+              isSubmitting={isSubmitting}
             />
           )}
           {step === STEPS.LOADING && (

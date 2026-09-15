@@ -15,7 +15,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getPrismaClient } from "../prismaClient.js";
-import { withFallbackPolicy } from "../fallbackPolicy.js";
+import { isFileStoreAllowedWhenUnconfigured, unconfiguredDatabaseError, withFallbackPolicy } from "../fallbackPolicy.js";
 import type { AnalysisMode, Stage2Status } from "../prisma/client/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -192,8 +192,20 @@ const prismaAnalysisResultRepository: AnalysisResultRepository = {
   },
 };
 
+/** See quotaRepository.ts's unconfiguredQuotaRepository for why production
+ * rejects instead of silently switching to the file store when DATABASE_URL
+ * isn't set — a Preview result created here would otherwise live only in
+ * Render's ephemeral filesystem. */
+const unconfiguredAnalysisResultRepository: AnalysisResultRepository = {
+  createPreview: () => Promise.reject(unconfiguredDatabaseError("analysis-result")),
+  findById: () => Promise.reject(unconfiguredDatabaseError("analysis-result")),
+  purgeExpired: () => Promise.reject(unconfiguredDatabaseError("analysis-result")),
+};
+
 export function getAnalysisResultRepository(): AnalysisResultRepository {
-  if (!process.env.DATABASE_URL) return fileAnalysisResultRepository;
+  if (!process.env.DATABASE_URL) {
+    return isFileStoreAllowedWhenUnconfigured() ? fileAnalysisResultRepository : unconfiguredAnalysisResultRepository;
+  }
 
   return {
     createPreview: (input) =>

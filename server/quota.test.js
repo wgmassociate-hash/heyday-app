@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, test } from 'vitest'
 import { assertCanUseQuota, consumeQuota, getKstDateString, getQuotaStatus, isDevQuotaBypassed } from './quota.js'
 import { readStore, writeStore } from './quotaStore.js'
+import { DatabaseUnavailableError } from './db/fallbackPolicy.js'
 
 const ORIGINAL_ENV = { ...process.env }
 
@@ -100,7 +101,12 @@ describe('getQuotaStatus with DEV_BYPASS_QUOTA active', () => {
     expect(stored.devices[deviceId]).toEqual(exhausted)
   })
 
-  test('production ignores DEV_BYPASS_QUOTA here too — the exhausted device stays blocked', async () => {
+  test('production ignores DEV_BYPASS_QUOTA — and with no DATABASE_URL configured, production also refuses to silently read the file store, surfacing DatabaseUnavailableError instead', async () => {
+    // V2 Production Closing hard guard: production + DATABASE_URL unset is no
+    // longer "use the file store transparently" (that was the previous
+    // behavior this test used to assert) — it's now identical to a Postgres
+    // outage, so callers get a 503 instead of a bypass-proof but otherwise
+    // silent read of Render's ephemeral file store.
     setEnv({ NODE_ENV: 'production', DATABASE_URL: undefined, RATE_LIMIT_DISABLED: undefined, DEV_BYPASS_QUOTA: 'true' })
     const kstDate = getKstDateString()
     const exhausted = { date: kstDate, used: 999, shareBonus: 0, lastShareAt: 0 }
@@ -108,8 +114,6 @@ describe('getQuotaStatus with DEV_BYPASS_QUOTA active', () => {
     store.devices[deviceId] = exhausted
     writeStore(store)
 
-    const status = await getQuotaStatus(deviceId)
-    expect(status.canAnalyze).toBe(false)
-    expect(status.disabled).toBe(false)
+    await expect(getQuotaStatus(deviceId)).rejects.toThrow(DatabaseUnavailableError)
   })
 })
