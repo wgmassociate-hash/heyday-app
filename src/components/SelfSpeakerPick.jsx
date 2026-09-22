@@ -7,6 +7,7 @@ import {
   isAnonymizedOtherLabel,
   isOtherPseudoSpeaker,
   isSelfSpeaker,
+  isValidSpeakerCandidate,
   normalizeSpeakerDisplayLabel,
   textHasSelfSpeaker,
 } from '../utils/speakerLabels.js'
@@ -20,7 +21,8 @@ export default function SelfSpeakerPick({ chatText, onAssign }) {
       s !== '나' &&
       !isSelfSpeaker(s) &&
       !isAnonymizedOtherLabel(s) &&
-      !isOtherPseudoSpeaker(s),
+      !isOtherPseudoSpeaker(s) &&
+      isValidSpeakerCandidate(s),
   )
   const isRealNames = realNames.length >= 2 && !isAlreadyAnonymized(chatText)
   const anonCandidates = getSelfPickCandidates(chatText)

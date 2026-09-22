@@ -8,6 +8,26 @@ export const SELF_SPEAKER_ALIASES = new Set(['나', '내', '본인', 'Me', 'me']
 
 export const OTHER_PSEUDO_SPEAKERS = new Set(['상대', '상대방', '타인'])
 
+const PARSER_CONTROL_TOKENS = new Set([
+  '__speaker__',
+  '__timestamp__',
+  '__date__',
+  '__message__',
+  '__content__',
+])
+
+/** UI와 parser 경계에서 공통으로 사용하는 명백한 비화자 값 방어. */
+export function isValidSpeakerCandidate(value) {
+  const name = String(value || '').trim()
+  if (!name) return false
+  if (/^\d+$/.test(name)) return false
+  if (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(name)) return false
+  if (/^\d{4}\s*년(?:\s*\d{1,2}\s*월(?:\s*\d{1,2}\s*일)?)?(?:\s+[월화수목금토일]요일)?$/.test(name)) return false
+  if (/^\d{4}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*\d{1,2}\.?$/.test(name)) return false
+  if (PARSER_CONTROL_TOKENS.has(name.toLowerCase())) return false
+  return true
+}
+
 const LEGACY_OTHER_LABEL = '사용자'
 const LEGACY_OTHER_PATTERN = /^사용자([A-Z])?$/
 const LEGACY_PERSON_PATTERN = /^인물([A-Z])$/
@@ -98,6 +118,9 @@ function extractSpeakerNameFromLine(line) {
   const trimmed = String(line || '').trim()
   if (!trimmed) return null
 
+  const timePrefixed = trimmed.match(/^(?:[01]\d|2[0-3]):[0-5]\d\s+(\S{1,25})\s+.+$/)
+  if (timePrefixed) return timePrefixed[1].trim()
+
   const bracket = trimmed.match(/^\[(.+?)\]\s+\[(?:오전|오후)\s+\d{1,2}:\d{2}\]/)
   if (bracket) return bracket[1].trim()
 
@@ -127,7 +150,7 @@ export function extractRawColonSpeakers(text) {
   const seen = new Set()
   for (const line of (text || '').split('\n')) {
     const name = extractSpeakerNameFromLine(line)
-    if (!name || seen.has(name)) continue
+    if (!isValidSpeakerCandidate(name) || seen.has(name)) continue
     seen.add(name)
     speakers.push(name)
   }
@@ -185,6 +208,10 @@ export function applySpeakerAnonymization(text, nameMap) {
         out = out.replace(new RegExp(`^\\[${escaped}\\]`), `[${target}]`)
         out = out.replace(new RegExp(`^${escaped}\\s*([:：])`), `${target} $1`)
         out = out.replace(new RegExp(`,\\s*${escaped}\\s*([:：])`), `, ${target} $1`)
+        out = out.replace(
+          new RegExp(`^((?:[01]\\d|2[0-3]):[0-5]\\d\\s+)${escaped}(?=\\s)`),
+          `$1${target}`,
+        )
       }
       return out
     })
@@ -250,6 +277,7 @@ export function getSelfPickCandidatesForImport(text) {
   const seen = new Set()
   const candidates = []
   for (const s of extractRawColonSpeakers(text)) {
+    if (!isValidSpeakerCandidate(s)) continue
     if (s === SELF_SPEAKER_LABEL) continue
     if (isOtherPseudoSpeaker(s)) continue
     if (isAnonymizedOtherLabel(s)) continue
@@ -264,7 +292,10 @@ export function getSelfPickCandidatesForImport(text) {
 export function getSelfPickCandidates(text) {
   if (textHasSelfSpeaker(text)) return []
   return extractRawColonSpeakers(text).filter(
-    (s) => s !== SELF_SPEAKER_LABEL && (isAnonymizedOtherLabel(s) || !isSelfSpeaker(s)),
+    (s) =>
+      isValidSpeakerCandidate(s) &&
+      s !== SELF_SPEAKER_LABEL &&
+      (isAnonymizedOtherLabel(s) || !isSelfSpeaker(s)),
   )
 }
 

@@ -16,6 +16,7 @@ import { toStandardMessages } from './toStandardMessages.js'
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 const SAMPLE_PATH = join(REPO_ROOT, 'samples/01-romantic-some.txt')
 const text = readFileSync(SAMPLE_PATH, 'utf8')
+const TIME_SPEAKER_PATH = join(REPO_ROOT, 'samples/06-time-speaker-production.txt')
 
 describe('Standard Message Model pipeline (Phase 1 sanity)', () => {
   test('toStandardMessages produces one Message per parsed line, in order', () => {
@@ -28,6 +29,21 @@ describe('Standard Message Model pipeline (Phase 1 sanity)', () => {
         Number(messages[i - 1].id.replace('msg_', '')),
       )
     }
+  })
+
+  test('lifts HH:MM speaker messages into the Standard Message Model', () => {
+    const compactText = readFileSync(TIME_SPEAKER_PATH, 'utf8')
+    const { messages } = toStandardMessages(compactText, { sourceType: 'txt' })
+
+    expect(messages[0]).toMatchObject({
+      timestamp: '21:35',
+      speakerId: '신정근',
+      text: '어디냐?',
+    })
+    expect([...new Set(messages.map((message) => message.speakerId))]).toEqual([
+      '신정근',
+      '전찬형',
+    ])
   })
 
   test('enrichMessages only assigns a response delay across a speaker change', () => {

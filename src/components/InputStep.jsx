@@ -5,7 +5,12 @@ import MobileImportPanel from './MobileImportPanel'
 import SelfSpeakerPick from './SelfSpeakerPick'
 import ShareQuotaPanel from './ShareQuotaPanel'
 import { extractSpeakerNames } from '../utils/parseChat.js'
-import { isAlreadyAnonymized, textHasSelfSpeaker, needsSelfSpeakerSelection } from '../utils/speakerLabels.js'
+import {
+  isAlreadyAnonymized,
+  isValidSpeakerCandidate,
+  textHasSelfSpeaker,
+  needsSelfSpeakerSelection,
+} from '../utils/speakerLabels.js'
 
 export default function InputStep({
   chatText,
@@ -23,11 +28,15 @@ export default function InputStep({
   const hasText = chatText.trim().length > 0
   const anonymized = isAlreadyAnonymized(chatText)
   const needsSelfPick = needsSelfSpeakerSelection(chatText)
+  const validSpeakers = speakers.filter(isValidSpeakerCandidate)
+  const speakerRecognitionFailed = hasText && validSpeakers.length < 2
   const quotaBlocked = quota && !quota.canAnalyze
-  const canAnalyze = isValid && !needsSelfPick && !quotaBlocked
+  const canAnalyze = isValid && !needsSelfPick && !speakerRecognitionFailed && !quotaBlocked
 
   const buttonLabel = quotaBlocked
     ? '🥲 오늘 횟수 다 썼어'
+    : speakerRecognitionFailed
+      ? '입력 형식을 다시 확인해줘'
     : needsSelfPick
       ? '👆 위에서 본인 먼저 선택'
       : !hasText
@@ -72,6 +81,11 @@ export default function InputStep({
           )}
           {needsSelfPick && (
             <p className="mt-3 text-xs text-amber-700 font-bold text-center">👆 대화 속에서 너는 누구인지 골라줘</p>
+          )}
+          {speakerRecognitionFailed && (
+            <p role="alert" className="mt-3 text-xs text-red-600 font-bold text-center">
+              대화 상대를 정확히 인식하지 못했어요.<br />입력 형식을 다시 확인해주세요.
+            </p>
           )}
           {!anonymized && hasText && speakers.length > 0 && !needsSelfPick && (
             <p className="mt-3 text-xs text-emerald-600 font-semibold text-center">✅ {speakers.length}명 대화 감지</p>

@@ -14,6 +14,7 @@ import {
   applySpeakerAnonymization,
   preprocessOcrSpeakers,
   normalizeLegacyAnonLabels,
+  isValidSpeakerCandidate,
   SELF_SPEAKER_LABEL,
 } from './speakerLabels.js'
 
@@ -88,6 +89,14 @@ const LINE_PATTERNS = [
     speaker: 2, content: 3, timestamp: 1, needsDateContext: true,
   },
   {
+    // 카카오톡 화면에서 복사한 간단 형식: "21:35 홍길동 메시지"
+    // 콜론 기반 generic 규칙보다 먼저 시간 전체를 소비해야 HH가 화자로
+    // 오인되지 않는다. 화자명은 이 형식에서 공백 없는 한 토큰이다.
+    platform: 'kakao',
+    regex: /^((?:[01]\d|2[0-3]):[0-5]\d)\s+(\S{1,25})\s+(.+)$/,
+    speaker: 2, content: 3, timestamp: 1,
+  },
+  {
     platform: 'generic',
     regex: /^(나|상대방(?:[A-Z])?|사용자(?:[A-Z])?)\s*[:：]\s*(.*)$/,
     speaker: 1, content: 2, timestamp: null,
@@ -119,8 +128,7 @@ function isValidSpeaker(name) {
   const trimmed = name.trim()
   if (!trimmed || trimmed.length > 25) return false
   if (SYSTEM_SENDERS.has(trimmed)) return false
-  if (/^\d{1,2}:\d{2}$/.test(trimmed)) return false
-  if (/^\d+$/.test(trimmed)) return false
+  if (!isValidSpeakerCandidate(trimmed)) return false
   if (/^\+?\d{2,3}-?\d{8,}$/.test(trimmed)) return false
   return true
 }
