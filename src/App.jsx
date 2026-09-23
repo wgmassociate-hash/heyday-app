@@ -8,6 +8,7 @@ import QuotaBadge from './components/QuotaBadge'
 import { analyzePreview } from './utils/previewApi.js'
 import { fetchQuota } from './utils/quotaApi.js'
 import { buildPrivacyPreview } from './utils/privacyPreview.js'
+import { trackEvent } from './utils/analytics.js'
 
 const STEPS = {
   INTENT: 'intent',
@@ -66,6 +67,7 @@ export default function App() {
   }, [])
 
   const handleIntentSelect = (nextIntent) => {
+    trackEvent('intent_selected', { intent: nextIntent })
     setIntent(nextIntent)
     transitionTo(STEPS.INPUT)
   }
@@ -87,6 +89,7 @@ export default function App() {
     }
 
     setPrivacyPreview(buildPrivacyPreview(chatText))
+    trackEvent('privacy_review_opened', { source_type: sourceType })
     transitionTo(STEPS.PRIVACY_REVIEW)
   }
 
@@ -100,6 +103,7 @@ export default function App() {
     // this screen's confirm button.
     if (!privacyPreview || !intent || isSubmitting) return
     setIsSubmitting(true)
+    trackEvent('analysis_started', { source_type: sourceType, intent })
 
     setLoadingState({ progress: 22, phase: '패턴 분석 OK · AI 분석 중...' })
     transitionTo(STEPS.LOADING)
@@ -125,6 +129,7 @@ export default function App() {
         prev ? { ...prev, progress: 100, phase: '분석 완료!' } : null,
       )
       setResult(data)
+      trackEvent('analysis_completed', { source_type: sourceType, intent })
       setShareHighlight(false)
       transitionTo(STEPS.RESULT)
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -132,6 +137,7 @@ export default function App() {
       clearInterval(progressTimer)
       console.error('[preview]', err)
       if (err?.code === 'QUOTA_EXCEEDED') {
+        trackEvent('analysis_failed', { reason: 'quota_exceeded', source_type: sourceType })
         if (err.quota) setQuota(err.quota)
         setShareHighlight(true)
         transitionTo(STEPS.INPUT)
@@ -140,6 +146,7 @@ export default function App() {
         }, 350)
         return
       }
+      trackEvent('analysis_failed', { reason: 'request_error', source_type: sourceType })
       transitionTo(STEPS.INPUT)
       alert(`분석 중 오류: ${err?.message || '알 수 없는 오류'}`)
     } finally {
@@ -149,6 +156,7 @@ export default function App() {
   }
 
   const handleReset = () => {
+    trackEvent('analysis_reset')
     setIntent(null)
     setChatText('')
     setPrivacyPreview(null)
@@ -211,7 +219,10 @@ export default function App() {
               shareHighlight={shareHighlight}
               sharePanelRef={sharePanelRef}
               sourceType={sourceType}
-              onSourceTypeChange={setSourceType}
+              onSourceTypeChange={(nextSourceType) => {
+                setSourceType(nextSourceType)
+                trackEvent('input_method_selected', { source_type: nextSourceType })
+              }}
             />
           )}
           {step === STEPS.PRIVACY_REVIEW && privacyPreview && (

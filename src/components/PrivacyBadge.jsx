@@ -8,6 +8,7 @@ export default function PrivacyBadge() {
         <li>이름·연락처 등은 가능한 범위에서 가린 뒤 분석해요.</li>
         <li>원본 대화 파일·스크린샷은 분석 후 보관하지 않아요.</li>
         <li>분석 전 AI에 전달될 내용을 직접 확인할 수 있어요.</li>
+        <li>이용 통계에는 대화 내용이나 이름을 전송하지 않아요.</li>
       </ul>
       <p className="text-xs text-gray-500 leading-relaxed mt-2">
         일부 개인정보는 완전히 제거되지 않을 수 있으며, 분석 결과는 서비스 제공을 위해

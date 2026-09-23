@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { ocrScreenshots, MAX_SCREENSHOTS } from '../utils/ocrScreenshots.js'
 import { anonymizeChatText } from '../utils/parseChat.js'
+import { trackEvent } from '../utils/analytics.js'
 
 let nextId = 1
 
@@ -63,6 +64,7 @@ export default function ScreenshotImportPanel({ onTextLoaded, onQuotaUpdate, onQ
   const handleExtract = async () => {
     if (items.length === 0) return
     setExtracting(true)
+    trackEvent('ocr_started', { image_count: items.length, source_type: 'screenshot' })
     setError('')
     setDoneMessage('')
     try {
@@ -78,15 +80,18 @@ export default function ScreenshotImportPanel({ onTextLoaded, onQuotaUpdate, onQ
       if (data.quota) onQuotaUpdate?.(data.quota)
 
       onTextLoaded(anonymizedText)
+      trackEvent('ocr_completed', { image_count: items.length, source_type: 'screenshot' })
       setDoneMessage('')
       document.getElementById('chat-input-review')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     } catch (err) {
       if (err?.code === 'QUOTA_EXCEEDED') {
+        trackEvent('ocr_failed', { reason: 'quota_exceeded', source_type: 'screenshot' })
         if (err.quota) onQuotaUpdate?.(err.quota)
         else onQuotaBlocked?.()
         setError(err.message || '오늘 AI 사용 횟수를 다 썼어. 공유하면 +1회!')
         return
       }
+      trackEvent('ocr_failed', { reason: 'request_error', source_type: 'screenshot' })
       setError(err?.message || '실패했어. 다시 시도해봐')
     } finally {
       setExtracting(false)

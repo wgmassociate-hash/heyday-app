@@ -62,6 +62,7 @@ git push -u origin main
 | `VITE_ADSENSE_SLOT_RESULT_TOP` | `1234567890` | AdSense 광고 단위 (**결과 화면 상단**) |
 | `VITE_ADSENSE_SLOT_RESULT_MIDDLE` | `1234567890` | AdSense 광고 단위 (**결과 화면 중단**) |
 | `VITE_ADSENSE_SLOT_RESULT_BOTTOM` | `1234567890` | AdSense 광고 단위 (**결과 화면 하단**) |
+| `VITE_GA_MEASUREMENT_ID` | `G-XXXXXXXXXX` | Google Analytics 4 웹 스트림 측정 ID |
 
 > `VITE_ADSENSE_SLOT_LOADING`을 비우면 로딩 화면은 `RECTANGLE` 슬롯을 그대로 씁니다. 로딩 노출만 따로 보려면 AdSense에서 광고 단위를 하나 더 만들고 여기에 넣으세요.
 > `VITE_ADSENSE_SLOT_RESULT_TOP/MIDDLE/BOTTOM`은 서로 다른 슬롯이어야 위치별 성과 측정이 가능합니다 — 비워두면 (banner 슬롯으로 대체되지 않고) 그 위치만 placeholder로 표시됩니다.
