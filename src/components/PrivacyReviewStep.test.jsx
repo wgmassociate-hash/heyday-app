@@ -50,20 +50,13 @@ describe('PrivacyReviewStep (Phase 2.1 items 6/7/8)', () => {
   })
 })
 
-describe('PrivacyBadge sourceType-specific copy (Phase 2.1 item 8)', () => {
-  test('screenshot sourceType mentions OCR-specific transmission, not the generic file wording', () => {
-    render(<PrivacyBadge sourceType="screenshot" />)
-    expect(screen.getByText(/캡처 이미지는 문자 추출을 위해/)).toBeTruthy()
-  })
-
-  test('text sourceType uses the generic file wording, not the screenshot-specific one', () => {
-    render(<PrivacyBadge sourceType="text" />)
-    expect(screen.queryByText(/캡처 이미지는 문자 추출을 위해/)).toBeNull()
-    expect(screen.getByText(/업로드한 대화 파일은 분석을 위해/)).toBeTruthy()
-  })
-
-  test('always discloses that the AI-bound form can be checked before analysis', () => {
-    render(<PrivacyBadge sourceType="text" />)
-    expect(screen.getByText(/분석 전에 AI에 전달될 형태를 직접 확인/)).toBeTruthy()
+describe('PrivacyBadge', () => {
+  test('shows the compact privacy summary without paid-report copy', () => {
+    render(<PrivacyBadge />)
+    expect(screen.getByText('🔒 대화 내용은 이렇게 처리해요')).toBeTruthy()
+    expect(screen.getByText(/원본 대화 파일·스크린샷은 분석 후 보관하지 않아요/)).toBeTruthy()
+    expect(screen.getByText(/분석 전 AI에 전달될 내용을 직접 확인/)).toBeTruthy()
+    expect(screen.getByText(/일부 개인정보는 완전히 제거되지 않을 수 있으며/)).toBeTruthy()
+    expect(screen.queryByText(/유료 리포트/)).toBeNull()
   })
 })
