@@ -133,7 +133,7 @@ export default function InputStep({
 
         <p className="text-center text-xs text-gray-500 mt-4">
           <a
-            href="https://www.heydaystar.co.kr"
+            href="https://blog.heydaystar.co.kr/"
             target="_blank"
             rel="noopener noreferrer"
             className="underline decoration-gray-300 hover:text-brand-600"
