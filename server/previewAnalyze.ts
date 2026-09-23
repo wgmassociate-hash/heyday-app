@@ -1,11 +1,10 @@
 // Phase 2 — /api/preview route logic (docs/implementation_plan_v2.md §16.2,
 // §20 Phase 2). Mirrors server/analyze.js's shape (quota check happens in the
-// route, this function does the LLM work + usage logging + persistence) but
+// route, this function does the LLM work + metadata-only usage logging) but
 // calls the new Relationship Engine (server/engine/pipeline/previewPipeline.ts)
-// instead of the v1 single-prompt analyzer. Kept as a separate module/route
-// rather than replacing server/analyze.js — see docs/implementation_plan_v2.md
-// §24.1's precedent for not deleting a still-referenced legacy path outright.
-import { getAnalysisResultRepository } from './db/repositories/analysisResultRepository.js'
+// instead of the v1 single-prompt analyzer. Free v2 results are returned to
+// the browser only; they are deliberately not persisted while Paid Deep/result
+// recovery remains outside the current product scope.
 import { getUsageLogRepository } from './db/repositories/usageLogRepository.js'
 import { estimateCostUsd } from './db/pricing.js'
 import type { AnalysisIntent } from './engine/intent/types.js'
@@ -37,7 +36,6 @@ const DEFAULT_PREVIEW_MAX_OUTPUT_TOKENS: number | undefined = undefined
 const FALLBACK_MODEL_LABEL = 'claude-sonnet-4-6'
 
 export interface PreviewAnalysisResult {
-  analysisId: string
   preview: PreviewScoreResult
   narrative: PreviewNarrative
   report: PreviewReport
@@ -81,25 +79,8 @@ export async function runPreviewAnalysis(
     inputTokens = result.usage.inputTokens
     outputTokens = result.usage.outputTokens
 
-    const analysisId = await getAnalysisResultRepository().createPreview({
-      deviceId,
-      intent,
-      analysisMode: result.analysisMode.toUpperCase() as 'SNAPSHOT' | 'STANDARD' | 'DEEP',
-      windowLabel: result.preview.windowLabel,
-      processedChunkIds: result.processedChunkIds,
-      previewFields: {
-        preview: result.preview,
-        narrative: result.narrative,
-        report: result.report,
-        alternateReport: result.alternateReport,
-        topSignal: result.topSignal,
-        paywallTeasers: result.paywallTeasers,
-      },
-    })
-
     success = true
     return {
-      analysisId,
       preview: result.preview,
       narrative: result.narrative,
       report: result.report,

@@ -11,8 +11,7 @@ export default function PrivacyBadge() {
         <li>이용 통계에는 대화 내용이나 이름을 전송하지 않아요.</li>
       </ul>
       <p className="text-xs text-gray-500 leading-relaxed mt-2">
-        일부 개인정보는 완전히 제거되지 않을 수 있으며, 분석 결과는 서비스 제공을 위해
-        제한적으로 저장될 수 있어요.
+        일부 개인정보는 가림 처리 후에도 남을 수 있어요.
       </p>
     </div>
   )
