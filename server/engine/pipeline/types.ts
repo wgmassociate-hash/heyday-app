@@ -105,7 +105,7 @@ export interface PreviewReport {
   keyScenes: KeyScene[]
   /** Item 13 — one "나 vs 상대" comparison line. */
   comparisonLine: string
-  /** Item 14 — 1-2 short, non-prescriptive tips. */
+  /** Item 14 — 2 concrete, non-prescriptive tips. */
   tips: string[]
   mismatch: MismatchNotice | null
 }

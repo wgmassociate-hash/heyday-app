@@ -257,7 +257,7 @@ describe('buildPreviewReport — comparison line (item 5, test #9)', () => {
 })
 
 describe('buildPreviewReport — tips (item 6, test #10)', () => {
-  test('produces 1-2 tips grounded in the actual result', () => {
+  test('produces two concrete tips grounded in the actual result', () => {
     const { report } = buildPreviewReport({
       intent: 'romantic_interest',
       score: previewScore({ core4Preview: core4({ conversationInitiationRatio: { ratioBySpeaker: { 나: 0.2, 상대방: 0.8 } } }) }),
@@ -265,9 +265,53 @@ describe('buildPreviewReport — tips (item 6, test #10)', () => {
       reciprocityPairs: [],
       messages: messages(),
     })
-    expect(report.tips.length).toBeGreaterThanOrEqual(1)
-    expect(report.tips.length).toBeLessThanOrEqual(2)
+    expect(report.tips).toHaveLength(2)
     expect(report.tips[0]).toContain('상대가 먼저')
+    expect(report.tips[0]).toContain('짧은 질문을 하나')
+    expect(report.tips[1]).toContain('짧은 답이 반복되면')
+  })
+
+  test('gives an easy opener when the other person does not initiate more often', () => {
+    const { report } = buildPreviewReport({
+      intent: 'romantic_interest',
+      score: previewScore(),
+      validatedSignals: [],
+      reciprocityPairs: [],
+      messages: messages(),
+    })
+    expect(report.tips).toHaveLength(2)
+    expect(report.tips[0]).toContain('지난번에 말한 그거 어떻게 됐어?')
+  })
+
+  test('uses reciprocity to qualify the next step when romance signals are high', () => {
+    const { report } = buildPreviewReport({
+      intent: 'romantic_interest',
+      score: previewScore({
+        recentRomanceSignal: romance(80),
+        core4Preview: core4({ reciprocity: { score: 35, confidence: 'high', bySpeaker: { 나: score(60), 상대방: score(30) } } }),
+      }),
+      validatedSignals: [],
+      reciprocityPairs: [],
+      messages: messages(),
+    })
+    expect(report.tips).toHaveLength(2)
+    expect(report.tips[1]).toContain('대화가 한쪽으로 흐르는')
+    expect(report.tips[1]).toContain('상대도 질문이나 새 화제로 돌아오는지')
+  })
+
+  test('does not suggest a meetup when reciprocity evidence is insufficient', () => {
+    const { report } = buildPreviewReport({
+      intent: 'romantic_interest',
+      score: previewScore({
+        recentRomanceSignal: romance(80),
+        core4Preview: core4({ reciprocity: { score: null, confidence: 'insufficient', bySpeaker: { 나: score(null, 'insufficient'), 상대방: score(null, 'insufficient') } } }),
+      }),
+      validatedSignals: [],
+      reciprocityPairs: [],
+      messages: messages(),
+    })
+    expect(report.tips[1]).toContain('아직 근거가 부족해요')
+    expect(report.tips[1]).not.toContain('같이 가볼래')
   })
 })
 

@@ -352,7 +352,7 @@ export default function PreviewResultStep({ result, onReset, onAddMoreConversati
       {activeReport?.tips?.length > 0 && (
         <section className="bg-emerald-50/60 rounded-3xl border border-emerald-100 p-5 mb-4">
           <p className="text-sm font-black text-emerald-800 mb-2">💡 지금 해볼 수 있는 Tip</p>
-          <ul className="space-y-1.5">
+          <ul className="space-y-3">
             {activeReport.tips.map((tip, i) => (
               <li key={i} className="text-sm text-emerald-900/90 leading-relaxed">• {tip}</li>
             ))}

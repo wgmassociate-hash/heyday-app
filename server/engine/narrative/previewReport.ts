@@ -132,19 +132,22 @@ function buildTips(score: PreviewScoreResult): string[] {
   const reciprocity = score.core4Preview.reciprocity
 
   if (otherInitiates) {
-    tips.push('상대가 먼저 대화를 열었을 때는 지금처럼 자연스럽게 이어가보세요.')
+    tips.push('상대가 먼저 대화를 열었을 때는 그 주제에 답한 뒤, 관련된 짧은 질문을 하나 덧붙여보세요. 상대가 자기 이야기를 더 보태거나 다시 질문한다면 지금처럼 대화를 이어가도 좋아요.')
+  } else {
+    tips.push('먼저 연락할 때는 최근에 함께 이야기했던 일이나 관심사 하나를 골라 가볍게 꺼내보세요. “지난번에 말한 그거 어떻게 됐어?”처럼 답하기 쉬운 질문이면 부담 없이 대화를 시작하기 좋아요.')
   }
+
   if (romanceBucket !== 'high') {
-    tips.push('지금은 직접적인 고백보다 공동 관심사를 이어가는 대화에서 상대의 반응 변화를 지켜보는 편이 자연스러워요.')
-  } else if (reciprocity.score !== null && reciprocity.score < 50) {
-    tips.push('질문이나 감정 표현에 조금 더 구체적으로 반응해보면 대화가 더 오래 이어질 수 있어요.')
+    tips.push('지금은 관계를 바로 확인하기보다 공통 관심사를 이어가며 반응을 살펴보는 편이 자연스러워요. 상대가 먼저 화제를 확장하거나 다음 대화를 이어오면 조금 더 표현해보고, 짧은 답이 반복되면 잠시 템포를 늦춰보세요.')
+  } else if (reciprocity.score === null || reciprocity.confidence === 'insufficient') {
+    tips.push('호감으로 읽힐 표현은 있지만 서로 비슷하게 대화를 이어가는지는 아직 근거가 부족해요. 바로 결론을 내리기보다 가벼운 질문을 건넨 뒤, 상대도 질문하거나 새 화제를 꺼내는지 한두 번 더 살펴보세요.')
+  } else if (reciprocity.score < 50) {
+    tips.push('호감으로 읽힐 표현은 있지만 대화가 한쪽으로 흐르는 순간도 보여요. 상대의 말에서 한 가지를 짚어 반응하고 질문은 하나만 건네본 뒤, 상대도 질문이나 새 화제로 돌아오는지 확인해보세요.')
+  } else {
+    tips.push('현재의 편안한 흐름을 유지하면서 작은 다음 약속을 제안해볼 수 있어요. “다음에 같이 가볼래?”처럼 거절해도 부담 없는 표현을 쓰고, 상대가 날짜나 장소를 구체화하는지 살펴보세요.')
   }
 
-  if (tips.length === 0) {
-    tips.push('지금 흐름을 크게 바꾸기보다는, 편하게 대화를 이어가면서 반응 변화를 지켜보는 것도 방법이에요.')
-  }
-
-  return tips.slice(0, 2)
+  return tips
 }
 
 function buildMetricNote(
