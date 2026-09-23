@@ -39,6 +39,7 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [quota, setQuota] = useState(null)
   const [shareHighlight, setShareHighlight] = useState(false)
+  const [refiningInput, setRefiningInput] = useState(false)
   const sharePanelRef = useRef(null)
 
   const lineCount = chatText.trim().split('\n').filter(Boolean).length
@@ -129,6 +130,7 @@ export default function App() {
         prev ? { ...prev, progress: 100, phase: '분석 완료!' } : null,
       )
       setResult(data)
+      setRefiningInput(false)
       trackEvent('analysis_completed', { source_type: sourceType, intent })
       setShareHighlight(false)
       transitionTo(STEPS.RESULT)
@@ -163,6 +165,7 @@ export default function App() {
     setResult(null)
     setLoadingState(null)
     setShareHighlight(false)
+    setRefiningInput(false)
     transitionTo(STEPS.INTENT)
     refreshQuota()
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -172,6 +175,8 @@ export default function App() {
   // InputStep with the existing chatText/intent intact (unlike handleReset)
   // so the user can paste more conversation instead of starting over.
   const handleAddMoreConversation = () => {
+    setRefiningInput(true)
+    setSourceType('text')
     transitionTo(STEPS.INPUT)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -218,6 +223,7 @@ export default function App() {
               onQuotaUpdate={handleQuotaUpdate}
               shareHighlight={shareHighlight}
               sharePanelRef={sharePanelRef}
+              refiningInput={refiningInput}
               sourceType={sourceType}
               onSourceTypeChange={(nextSourceType) => {
                 setSourceType(nextSourceType)

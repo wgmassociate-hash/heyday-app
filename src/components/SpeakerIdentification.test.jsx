@@ -41,4 +41,26 @@ describe('speaker identification UI', () => {
     expect(screen.getByRole('alert').textContent).toContain('대화 상대를 정확히 인식하지 못했어요.')
     expect(screen.getByRole('button', { name: '입력 형식을 다시 확인해줘' }).disabled).toBe(true)
   })
+
+  test('refinement mode preserves the existing text and explains replacement behavior', () => {
+    const chatText = '나 : 안녕\n상대방 : 반가워\n나 : 오늘 어땠어?'
+    render(
+      <InputStep
+        chatText={chatText}
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        isValid
+        quota={null}
+        onQuotaUpdate={vi.fn()}
+        refiningInput
+        sourceType="text"
+        onSourceTypeChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('기존 대화가 유지되고 있어요.')).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /직접 붙여넣기/ }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByLabelText('💬 대화 내용').value).toBe(chatText)
+    expect(screen.getByText(/버튼이나 새 TXT 파일을 사용하면 기존 입력이 교체돼요/)).toBeTruthy()
+  })
 })

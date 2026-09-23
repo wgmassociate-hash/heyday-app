@@ -105,7 +105,8 @@ describe('PreviewResultStep analyzability states (Phase 2.2 items 1/2/4/5/6/7)',
     })
     render(<PreviewResultStep result={insufficientResult} onReset={() => {}} onAddMoreConversation={() => {}} />)
     expect(screen.getByText('아직 분석할 수 있는 관계 단서가 부족해요.')).toBeTruthy()
-    expect(screen.getByText('+ 대화 더 추가하기')).toBeTruthy()
+    expect(screen.getByText('입력 보완해서 다시 분석하기')).toBeTruthy()
+    expect(screen.getByText(/새 결과가 현재 결과를 대체하며 분석 1회가 사용돼요/)).toBeTruthy()
     // The Core4 breakdown (and its repeated "판단할 단서가 아직 없어요" bars) must not render at all.
     expect(screen.queryByText('Core 4')).toBeNull()
     expect(screen.queryByText('판단할 단서가 아직 없어요')).toBeNull()
@@ -122,6 +123,8 @@ describe('PreviewResultStep analyzability states (Phase 2.2 items 1/2/4/5/6/7)',
     })
     render(<PreviewResultStep result={limitedResult} onReset={() => {}} onAddMoreConversation={() => {}} />)
     expect(screen.getByText('짧은 대화 기준 잠정 분석이에요.')).toBeTruthy()
+    expect(screen.getByText('현재 결과는 짧은 대화를 기준으로 한 참고용 분석이에요.')).toBeTruthy()
+    expect(screen.queryByText('입력 보완해서 다시 분석하기')).toBeNull()
     expect(screen.queryByText('아직 분석할 수 있는 관계 단서가 부족해요.')).toBeNull()
     // Real (if modest) numbers are shown, not hidden — this is the exact bug being fixed.
     expect(screen.getByText('9점')).toBeTruthy()

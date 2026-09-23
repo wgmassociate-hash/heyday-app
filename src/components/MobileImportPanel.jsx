@@ -2,8 +2,16 @@ import { useState } from 'react'
 import ScreenshotImportPanel from './ScreenshotImportPanel'
 import { deliverChatText } from '../utils/deliverChatText.js'
 
-export default function MobileImportPanel({ chatText, onChange, onQuotaUpdate, onQuotaBlocked, onSourceTypeChange }) {
-  const [tab, setTab] = useState('screenshot')
+export default function MobileImportPanel({
+  chatText,
+  onChange,
+  onQuotaUpdate,
+  onQuotaBlocked,
+  onSourceTypeChange,
+  preferText = false,
+  refinementMode = false,
+}) {
+  const [tab, setTab] = useState(preferText ? 'text' : 'screenshot')
 
   const selectTab = (next) => {
     setTab(next)
@@ -73,6 +81,11 @@ export default function MobileImportPanel({ chatText, onChange, onQuotaUpdate, o
 
       {tab === 'screenshot' ? (
         <div role="tabpanel">
+          {refinementMode && hasText && (
+            <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold leading-relaxed text-amber-700">
+              새 캡처에서 글자를 뽑으면 현재 입력은 새 OCR 결과로 교체돼요.
+            </p>
+          )}
           {!hasText && (
             <ol className="mb-4 space-y-2 text-xs text-gray-600 bg-violet-50/80 border border-violet-100 rounded-2xl p-3">
               <li className="flex gap-2">
@@ -103,6 +116,12 @@ export default function MobileImportPanel({ chatText, onChange, onQuotaUpdate, o
             <p className="text-xs text-gray-500 mb-3">
               카톡에서 대화 긁어서 아래 칸에 붙여넣거나, txt 파일을 올려줘
             </p>
+
+            {refinementMode && (
+              <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold leading-relaxed text-amber-700">
+                아래 입력창에 직접 이어 붙여 주세요. 버튼이나 새 TXT 파일을 사용하면 기존 입력이 교체돼요.
+              </p>
+            )}
 
             <div className="flex flex-wrap gap-2 mb-3">
               <button

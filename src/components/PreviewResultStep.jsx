@@ -161,15 +161,18 @@ function InsufficientNotice({ onAddMoreConversation }) {
         아직 분석할 수 있는 관계 단서가 부족해요.
       </p>
       <p className="text-xs text-gray-500 leading-relaxed mb-3">
-        대화를 조금 더 추가하면 관심도·친밀도·관계온도를 볼 수 있어요.
+        기존 입력에 대화를 더 붙여넣고 처음부터 다시 분석할 수 있어요.
       </p>
       <button
         type="button"
         onClick={onAddMoreConversation}
         className="w-full py-2.5 rounded-2xl font-bold text-sm bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
       >
-        + 대화 더 추가하기
+        입력 보완해서 다시 분석하기
       </button>
+      <p className="mt-2 text-[11px] text-gray-400 text-center">
+        새 결과가 현재 결과를 대체하며 분석 1회가 사용돼요.
+      </p>
     </section>
   )
 }
@@ -179,22 +182,15 @@ function InsufficientNotice({ onAddMoreConversation }) {
  * leads with "잠정 분석" rather than "단서가 부족해요" (which now only
  * appears for the separate truly_insufficient state above). Renders nothing
  * for 'normal'. */
-function LimitedAnalysisNotice({ onAddMoreConversation }) {
+function LimitedAnalysisNotice() {
   return (
     <section className="bg-amber-50/80 rounded-3xl border border-amber-100 p-5 mb-4">
       <p className="text-sm font-black text-amber-800 mb-1.5">
         짧은 대화 기준 잠정 분석이에요.
       </p>
       <p className="text-xs text-amber-700/90 leading-relaxed mb-3">
-        대화를 조금 더 추가하면 결과가 더 안정될 수 있어요.
+        현재 결과는 짧은 대화를 기준으로 한 참고용 분석이에요.
       </p>
-      <button
-        type="button"
-        onClick={onAddMoreConversation}
-        className="w-full py-2.5 rounded-2xl font-bold text-sm bg-white border border-amber-200 text-amber-800 hover:bg-amber-50"
-      >
-        + 대화 더 추가하기
-      </button>
     </section>
   )
 }
@@ -282,7 +278,7 @@ export default function PreviewResultStep({ result, onReset, onAddMoreConversati
 
           {/* 7. 대화 충분성 안내 (필요한 경우) */}
           {analyzability === 'limited_but_analyzable' && (
-            <LimitedAnalysisNotice onAddMoreConversation={onAddMoreConversation} />
+            <LimitedAnalysisNotice />
           )}
         </>
       )}

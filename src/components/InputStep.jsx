@@ -21,6 +21,7 @@ export default function InputStep({
   onQuotaUpdate,
   shareHighlight = false,
   sharePanelRef,
+  refiningInput = false,
   onSourceTypeChange,
 }) {
   const speakers = chatText.trim() ? extractSpeakerNames(chatText) : []
@@ -63,6 +64,13 @@ export default function InputStep({
       </section>
 
       <div className="max-w-xl mx-auto">
+        {refiningInput && (
+          <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
+            <p className="font-black mb-1">기존 대화가 유지되고 있어요.</p>
+            <p>직접 붙여넣기 입력창 맨 아래에 새 대화를 이어 붙여 주세요.</p>
+          </div>
+        )}
+
         <UsagePreview hidden={hasText} />
 
         <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 md:p-5 mb-4">
@@ -72,6 +80,8 @@ export default function InputStep({
             onQuotaUpdate={onQuotaUpdate}
             onQuotaBlocked={() => onQuotaUpdate?.()}
             onSourceTypeChange={onSourceTypeChange}
+            preferText={refiningInput}
+            refinementMode={refiningInput}
           />
 
           {anonymized && textHasSelfSpeaker(chatText) && (
