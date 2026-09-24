@@ -1,6 +1,10 @@
-import { toBlob } from 'html-to-image'
+const DEFAULT_FILE_NAME = 'heydaystar-카톡관계분석-요약.png'
+const DEFAULT_SHARE_TITLE = 'heydaystar 카톡 관계 분석'
+const DEFAULT_SHARE_TEXT = '카톡 대화로 관계의 흐름을 읽어봤어. 너도 heydaystar에서 분석해봐!'
 
-const APP_URL = 'https://app.heydaystar.co.kr'
+function appUrl() {
+  return typeof window !== 'undefined' ? window.location.origin : 'https://www.heydaystar.co.kr'
+}
 
 function shouldIncludeNode(node) {
   if (!(node instanceof Element)) return true
@@ -15,6 +19,9 @@ export async function captureResultExportBlob(exportElement) {
   await document.fonts.ready
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
 
+  // The image encoder is only needed after an explicit save/share action;
+  // keep it out of the initial analysis experience.
+  const { toBlob } = await import('html-to-image')
   const height = exportElement.scrollHeight
   const pixelRatio = height > 8000 ? 1 : height > 5000 ? 1.25 : 2
 
@@ -29,38 +36,41 @@ export async function captureResultExportBlob(exportElement) {
   return blob
 }
 
-export function downloadShareBlob(blob, score) {
+export function downloadShareBlob(blob, fileName = DEFAULT_FILE_NAME) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `heydaystar-호감도${score}.png`
+  a.download = fileName
   document.body.appendChild(a)
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 2000)
 }
 
-/** @param {HTMLElement} exportElement @param {number} totalScore */
-export async function saveResultImage(exportElement, totalScore) {
+/** @param {HTMLElement} exportElement */
+export async function saveResultImage(exportElement, fileName = DEFAULT_FILE_NAME) {
   const blob = await captureResultExportBlob(exportElement)
-  downloadShareBlob(blob, totalScore)
+  downloadShareBlob(blob, fileName)
   return blob
 }
 
 /**
  * @returns {'shared' | 'downloaded'}
  */
-export async function shareResultImage(exportElement, totalScore) {
+export async function shareResultImage(exportElement, {
+  fileName = DEFAULT_FILE_NAME,
+  title = DEFAULT_SHARE_TITLE,
+  text = DEFAULT_SHARE_TEXT,
+} = {}) {
   const blob = await captureResultExportBlob(exportElement)
-  const file = new File([blob], `heydaystar-호감도${totalScore}.png`, { type: 'image/png' })
-  const shareText = `카톡 호감도 ${totalScore}점 💕 나도 heydaystar로 분석해봐!`
+  const file = new File([blob], fileName, { type: 'image/png' })
 
   if (navigator.share) {
     try {
       const payload = {
-        title: 'heydaystar 카톡 분석 결과',
-        text: shareText,
-        url: APP_URL,
+        title,
+        text,
+        url: appUrl(),
       }
       if (navigator.canShare?.({ files: [file] })) {
         payload.files = [file]
@@ -72,6 +82,6 @@ export async function shareResultImage(exportElement, totalScore) {
     }
   }
 
-  downloadShareBlob(blob, totalScore)
+  downloadShareBlob(blob, fileName)
   return 'downloaded'
 }

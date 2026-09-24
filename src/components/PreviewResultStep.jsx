@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import AdSlot from './AdSlot'
+import ResultShareActions from './ResultShareActions'
 import { INTENT_OPTIONS } from '../../shared/intentOptions.js'
 import { getPreviewAnalyzability } from '../utils/previewSufficiency.js'
 
@@ -206,6 +207,7 @@ function Paragraphs({ text, className }) {
 export default function PreviewResultStep({ result, onReset, onAddMoreConversation }) {
   const { preview, narrative, topSignal, intent } = result
   const [showAlternateReport, setShowAlternateReport] = useState(false)
+  const shareCardRef = useRef(null)
   const activeReport = showAlternateReport && result.alternateReport ? result.alternateReport : result.report
   const temperature = preview.recentConversationTemperature
   const romance = preview.recentRomanceSignal
@@ -408,6 +410,34 @@ export default function PreviewResultStep({ result, onReset, onAddMoreConversati
       {/* Result Bottom 광고 — 장면/비교/Tip/mismatch 다음, 마지막
        * 광고. "다른 대화 분석하기" 버튼과 헷갈리지 않도록 위아래 여백을 넉넉히 둔다. */}
       <AdSlot variant="resultBottom" className="mt-2 mb-8" />
+
+      {/* 개인정보를 담지 않는 결과 요약 카드. 이 카드만 이미지로 만들어
+       * 저장/공유하므로 원문 대화·화자명·광고는 절대 export 대상이 아니다. */}
+      <section
+        ref={shareCardRef}
+        className="rounded-3xl border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-pink-50 p-5 mb-3 text-center"
+      >
+        <p className="text-xs font-black tracking-wide text-violet-600 mb-2">HEYDAYSTAR · 카톡 관계 분석</p>
+        <p className="text-xs text-gray-500 mb-4">{preview.windowLabel} 분석 요약 · 대화 원문 미포함</p>
+        {activeReport?.relationshipStatus && (
+          <p className="inline-flex rounded-full bg-violet-100 px-3 py-1.5 text-sm font-black text-violet-800 mb-3">
+            {activeReport.relationshipStatus}
+          </p>
+        )}
+        {activeReport?.directAnswer && (
+          <p className="text-base font-black text-gray-900 leading-relaxed">
+            {activeReport.directAnswer}
+          </p>
+        )}
+        <p className="text-[11px] text-gray-400 mt-4">heydaystar.co.kr</p>
+      </section>
+
+      <ResultShareActions
+        exportRef={shareCardRef}
+        heading="📸 분석 결과 저장 · 공유"
+        description="대화 원문과 이름 없이 결과 요약 카드만 이미지로 만들어요."
+        shareLabel="💬 친구에게 공유"
+      />
 
       <button
         type="button"

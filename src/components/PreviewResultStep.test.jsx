@@ -117,6 +117,15 @@ describe('PreviewResultStep (Phase 2.1 items 2/3/5/9)', () => {
     expect(screen.queryByText(/전체 리포트 보기/)).toBeNull()
     expect(screen.queryByText(/전체 대화 기준 종합 분석/)).toBeNull()
   })
+
+  test('offers a privacy-safe result summary image for saving and sharing', () => {
+    render(<PreviewResultStep result={buildResult()} onReset={() => {}} onAddMoreConversation={() => {}} />)
+    expect(screen.getByText('HEYDAYSTAR · 카톡 관계 분석')).toBeTruthy()
+    expect(screen.getByText('📸 분석 결과 저장 · 공유')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '📥 결과 이미지 저장' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '💬 친구에게 공유' })).toBeTruthy()
+    expect(screen.getByText(/대화 원문과 이름 없이 결과 요약 카드만 이미지로 만들어요/)).toBeTruthy()
+  })
 })
 
 describe('PreviewResultStep analyzability states (Phase 2.2 items 1/2/4/5/6/7)', () => {
