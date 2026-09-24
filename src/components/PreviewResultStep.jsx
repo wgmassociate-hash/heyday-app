@@ -204,7 +204,7 @@ function Paragraphs({ text, className }) {
 }
 
 export default function PreviewResultStep({ result, onReset, onAddMoreConversation }) {
-  const { preview, narrative, topSignal, paywallTeasers = [], intent } = result
+  const { preview, narrative, topSignal, intent } = result
   const [showAlternateReport, setShowAlternateReport] = useState(false)
   const activeReport = showAlternateReport && result.alternateReport ? result.alternateReport : result.report
   const temperature = preview.recentConversationTemperature
@@ -405,29 +405,7 @@ export default function PreviewResultStep({ result, onReset, onAddMoreConversati
         </section>
       )}
 
-      {/* 15-16. 아직 남은 질문 + Locked teaser */}
-      {paywallTeasers.length > 0 && (
-        <section className="rounded-3xl border-2 border-dashed border-brand-200 bg-brand-50/50 p-5 mb-4">
-          <p className="text-sm font-black text-brand-700 mb-3">🤔 아직 남은 질문</p>
-          <ul className="space-y-3 mb-4">
-            {paywallTeasers.map((teaser) => (
-              <li key={teaser.question} className="text-xs">
-                <p className="text-gray-700 font-medium leading-relaxed mb-1">{teaser.question}</p>
-                <p className="text-brand-600 font-bold">{teaser.lockedLabel}</p>
-              </li>
-            ))}
-          </ul>
-          <button
-            type="button"
-            disabled
-            className="w-full py-3 rounded-2xl font-black text-sm bg-gray-200 text-gray-400 cursor-not-allowed"
-          >
-            전체 리포트 보기 (준비 중)
-          </button>
-        </section>
-      )}
-
-      {/* Result Bottom 광고 — 장면/비교/Tip/mismatch/paywall teaser 다음, 마지막
+      {/* Result Bottom 광고 — 장면/비교/Tip/mismatch 다음, 마지막
        * 광고. "다른 대화 분석하기" 버튼과 헷갈리지 않도록 위아래 여백을 넉넉히 둔다. */}
       <AdSlot variant="resultBottom" className="mt-2 mb-8" />
 

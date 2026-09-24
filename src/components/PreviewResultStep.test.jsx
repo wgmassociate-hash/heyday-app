@@ -35,10 +35,6 @@ function buildResult(overrides = {}) {
     },
     narrative: { firstVerdict: '테스트 판정 문장입니다', summaryOneLine: '요약' },
     topSignal: { reason: '상대의 말에 이어 단둘이 식사하는 행동을 제안했습니다', signalType: 'x', category: 'romance' },
-    paywallTeasers: [
-      { question: '둘의 관심 표현 차이는 최근 대화에서만 나타난 걸까요?', lockedLabel: '🔒 전체 대화에서 패턴 확인' },
-      { question: '대화는 이어지지만, 한쪽이 더 많이 맞춰주고 있는 걸까요?', lockedLabel: '🔒 전체 상호작용 분석' },
-    ],
     ...overrides.result,
   }
 }
@@ -115,10 +111,11 @@ describe('PreviewResultStep (Phase 2.1 items 2/3/5/9)', () => {
     expect(screen.getByText('가까워지는 썸 같아요')).toBeTruthy()
   })
 
-  test('renders dynamic paywall teasers instead of a static feature list', () => {
+  test('hides deferred paid-report teasers in the current free-product UI', () => {
     render(<PreviewResultStep result={buildResult()} onReset={() => {}} onAddMoreConversation={() => {}} />)
-    expect(screen.getByText('둘의 관심 표현 차이는 최근 대화에서만 나타난 걸까요?')).toBeTruthy()
-    expect(screen.getByText('🔒 전체 대화에서 패턴 확인')).toBeTruthy()
+    expect(screen.queryByText('🤔 아직 남은 질문')).toBeNull()
+    expect(screen.queryByText(/전체 리포트 보기/)).toBeNull()
+    expect(screen.queryByText(/전체 대화 기준 종합 분석/)).toBeNull()
   })
 })
 
