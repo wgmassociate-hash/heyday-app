@@ -229,6 +229,30 @@ describe('buildPreviewReport — key scenes (item 4, tests #7/#8)', () => {
       messages: messages([['m1', '나', '지난번 그거 어떻게 됐어?']]),
     })
     expect(report.keyScenes[0].excerpt).toBe('지난번 그거 어떻게 됐어?')
+    expect(report.keyScenes[0].excerpts).toEqual([{ speakerId: '나', text: '지난번 그거 어떻게 됐어?' }])
+    expect(report.keyScenes[0].title).toBe('지나간 말을 기억해 다시 꺼낸 순간')
+    expect(report.keyScenes[0].cueLabel).toBe('관심의 단서')
+  })
+
+  test('shows up to three linked messages so a scene is not stripped of its context', () => {
+    const { report } = buildPreviewReport({
+      intent: 'romantic_interest',
+      score: previewScore(),
+      validatedSignals: [sig({ signalType: 'includes_partner_in_future', category: 'intimacy', messageIds: ['m1', 'm2', 'm3', 'm4'] })],
+      reciprocityPairs: [],
+      messages: messages([
+        ['m1', '상대방', '연휴 때 시간 괜찮아?'],
+        ['m2', '나', '응 아직 별일 없어'],
+        ['m3', '상대방', '그럼 커피 한잔하자'],
+        ['m4', '나', '좋아'],
+      ]),
+    })
+    expect(report.keyScenes[0].excerpts).toEqual([
+      { speakerId: '상대방', text: '연휴 때 시간 괜찮아?' },
+      { speakerId: '나', text: '응 아직 별일 없어' },
+      { speakerId: '상대방', text: '그럼 커피 한잔하자' },
+    ])
+    expect(report.keyScenes[0].excerpts).toHaveLength(3)
   })
 })
 

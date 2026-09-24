@@ -70,10 +70,39 @@ describe('ScoreBar (Phase 2.2 item 1 — confidence controls interpretation, not
 })
 
 describe('PreviewResultStep (Phase 2.1 items 2/3/5/9)', () => {
-  test('renders "AI가 눈여겨본 장면" instead of "결정적 카톡" for the free Evidence', () => {
+  test('renders the highlighted scene heading instead of "결정적 카톡" for the free Evidence', () => {
     render(<PreviewResultStep result={buildResult()} onReset={() => {}} onAddMoreConversation={() => {}} />)
-    expect(screen.getByText('👀 AI가 눈여겨본 장면')).toBeTruthy()
+    expect(screen.getByText('✨ 대화 속, 그냥 지나치기 아까운 순간')).toBeTruthy()
     expect(screen.queryByText(/결정적 카톡/)).toBeNull()
+  })
+
+  test('renders a key scene with its title, cue, linked excerpts, and interpretation', () => {
+    const result = buildResult({
+      result: {
+        report: {
+          keyScenes: [{
+            title: '앞으로의 장면에 상대를 넣은 순간',
+            cueLabel: '친밀감의 단서',
+            excerpts: [
+              { speakerId: '상대방', text: '연휴 때 시간 괜찮아?' },
+              { speakerId: '나', text: '응 아직 별일 없어' },
+            ],
+            speakerId: '상대방',
+            excerpt: '연휴 때 시간 괜찮아?',
+            interpretation: '앞으로의 계획 속에 상대를 자연스럽게 포함했어요.',
+            signalType: 'includes_partner_in_future',
+            category: 'intimacy',
+          }],
+        },
+      },
+    })
+    render(<PreviewResultStep result={result} onReset={() => {}} onAddMoreConversation={() => {}} />)
+    expect(screen.getByText('앞으로의 장면에 상대를 넣은 순간')).toBeTruthy()
+    expect(screen.getByText('친밀감의 단서')).toBeTruthy()
+    expect(screen.getByText('“연휴 때 시간 괜찮아?”')).toBeTruthy()
+    expect(screen.getByText('“응 아직 별일 없어”')).toBeTruthy()
+    expect(screen.getByText('AI가 주목한 이유')).toBeTruthy()
+    expect(screen.getByText('앞으로의 계획 속에 상대를 자연스럽게 포함했어요.')).toBeTruthy()
   })
 
   test('shows the analysis scope with message count', () => {
@@ -131,7 +160,7 @@ describe('PreviewResultStep analyzability states (Phase 2.2 items 1/2/4/5/6/7)',
     expect(screen.getByText('7점')).toBeTruthy()
     expect(screen.getByText('0점')).toBeTruthy()
     // At least one clue (topSignal) still renders alongside the numbers (item 5).
-    expect(screen.getByText('👀 AI가 눈여겨본 장면')).toBeTruthy()
+    expect(screen.getByText('✨ 대화 속, 그냥 지나치기 아까운 순간')).toBeTruthy()
   })
 
   test('normal (mostly medium/high confidence): no sufficiency notice at all', () => {

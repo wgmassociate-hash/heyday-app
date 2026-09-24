@@ -319,21 +319,52 @@ export default function PreviewResultStep({ result, onReset, onAddMoreConversati
 
       {/* 11. AI가 눈여겨본 핵심 장면 (최대 2개) */}
       {keyScenes ? (
-        <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 mb-4 space-y-4">
-          <p className="text-sm font-bold text-gray-700">👀 AI가 눈여겨본 장면</p>
-          {keyScenes.map((scene, i) => (
-            <div key={i}>
-              <p className="text-xs font-bold text-gray-400 mb-1">{scene.speakerId}</p>
-              <p className="bg-gray-50 rounded-2xl p-4 text-sm text-gray-700 leading-relaxed mb-1.5">"{scene.excerpt}"</p>
-              <p className="text-xs text-gray-500 leading-relaxed">→ {scene.interpretation}</p>
-            </div>
-          ))}
+        <section className="bg-gradient-to-br from-violet-50 via-white to-amber-50 rounded-3xl border border-violet-100 shadow-sm p-5 mb-4">
+          <div className="mb-5">
+            <p className="text-base font-black text-gray-900">✨ 대화 속, 그냥 지나치기 아까운 순간</p>
+            <p className="text-xs text-gray-500 leading-relaxed mt-1">실제 대화에서 관계의 흐름을 읽는 데 도움이 된 장면이에요.</p>
+          </div>
+          <div className="space-y-4">
+            {keyScenes.map((scene, i) => (
+              <article key={i} className="rounded-2xl bg-white/90 border border-white shadow-sm p-4">
+                <div className="flex items-start gap-3 mb-3">
+                  <span className="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-violet-600 text-[11px] font-black text-white shadow-sm">
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <div className="min-w-0">
+                    <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700 mb-1">
+                      {scene.cueLabel}
+                    </span>
+                    <h3 className="text-sm font-black text-gray-900 leading-snug">{scene.title}</h3>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-gray-50 border-l-4 border-violet-300 px-4 py-3 space-y-2 mb-3">
+                  {(scene.excerpts?.length ? scene.excerpts : [{ speakerId: scene.speakerId, text: scene.excerpt }]).map((excerpt, excerptIndex) => (
+                    <div key={excerptIndex}>
+                      <p className="text-[11px] font-bold text-gray-400 mb-0.5">{excerpt.speakerId}</p>
+                      <p className="text-sm text-gray-800 leading-relaxed">“{excerpt.text}”</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-xl bg-violet-50/70 px-3.5 py-3">
+                  <p className="text-[11px] font-black tracking-wide text-violet-700 mb-1">AI가 주목한 이유</p>
+                  <p className="text-xs text-gray-600 leading-relaxed">{scene.interpretation}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+          <p className="text-[11px] text-gray-400 leading-relaxed mt-4 text-center">
+            한 장면보다 비슷한 표현이 반복되는지를 함께 보면 더 정확해요.
+          </p>
         </section>
       ) : (
         topSignal && (
-          <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 mb-4">
-            <p className="text-sm font-bold text-gray-700 mb-2">👀 AI가 눈여겨본 장면</p>
-            <p className="bg-gray-50 rounded-2xl p-4 text-sm text-gray-700 leading-relaxed">
+          <section className="bg-gradient-to-br from-violet-50 via-white to-amber-50 rounded-3xl border border-violet-100 shadow-sm p-5 mb-4">
+            <p className="text-base font-black text-gray-900 mb-1">✨ 대화 속, 그냥 지나치기 아까운 순간</p>
+            <p className="text-xs text-gray-500 leading-relaxed mb-3">실제 대화에서 관계의 흐름을 읽는 데 도움이 된 단서예요.</p>
+            <p className="bg-white/90 border border-white shadow-sm rounded-2xl p-4 text-sm text-gray-700 leading-relaxed">
               {topSignal.reason}
             </p>
           </section>
