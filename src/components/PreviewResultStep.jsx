@@ -78,6 +78,35 @@ export function ScoreBar({ score, label, confidence, note }) {
   )
 }
 
+function temperatureSummary(score) {
+  if (score >= 70) return '편안함과 관심의 단서가 비교적 뚜렷해요.'
+  if (score >= 40) return '서로 이어지는 흐름이 보여요.'
+  return '아직 조심스럽게 흐름을 살펴볼 단계예요.'
+}
+
+function TemperatureHero({ score, confidence, windowLabel }) {
+  const ring =
+    score >= 70 ? 'from-rose-400 via-pink-500 to-fuchsia-600' :
+    score >= 40 ? 'from-orange-400 via-amber-400 to-rose-500' :
+    'from-violet-400 via-purple-500 to-indigo-600'
+
+  return (
+    <section className="bg-gradient-to-b from-rose-50/80 to-white rounded-3xl border border-rose-100 shadow-sm p-5 mb-4 text-center">
+      <p className="text-sm font-black text-rose-600 mb-3">🌡️ {windowLabel} 대화 온도</p>
+      <div className={`inline-flex w-28 h-28 rounded-full bg-gradient-to-br ${ring} text-white items-center justify-center shadow-lg shadow-rose-200/70`}>
+        <div>
+          <p className="text-4xl leading-none font-black tabular-nums">{score}</p>
+          <p className="text-xs font-bold text-white/90 mt-1">점</p>
+        </div>
+      </div>
+      <p className="mt-3 text-sm font-black text-gray-800">{temperatureSummary(score)}</p>
+      {confidence && CONFIDENCE_CAPTION[confidence] && (
+        <p className="mt-1 text-xs font-medium text-gray-500">{CONFIDENCE_CAPTION[confidence]}</p>
+      )}
+    </section>
+  )
+}
+
 function orderedSpeakerEntries(bySpeaker) {
   return Object.entries(bySpeaker).sort(([a], [b]) => (a === '나' ? -1 : b === '나' ? 1 : 0))
 }
@@ -245,15 +274,17 @@ export default function PreviewResultStep({ result, onReset, onAddMoreConversati
         <InsufficientNotice onAddMoreConversation={onAddMoreConversation} />
       ) : (
         /* 5. 관계온도 + 연애 시그널 (Result Top 광고는 이 다음, Core 지표보다 먼저) */
-        <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 mb-4 space-y-5">
+        <>
+          <TemperatureHero score={temperature.score} confidence={temperature.confidence} windowLabel={preview.windowLabel} />
+          <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 mb-4 space-y-5">
           {position && POSITION_LABELS[position.label] && (
             <p className="text-center text-sm font-bold text-violet-700 bg-violet-50 rounded-2xl py-2 px-3">
               {POSITION_LABELS[position.label]}
             </p>
           )}
-          <ScoreBar score={temperature.score} confidence={temperature.confidence} label={`🌡️ ${preview.windowLabel} 온도`} />
           <ScoreBar score={romance.score} label="💘 연애 시그널" />
-        </section>
+          </section>
+        </>
       )}
 
       {/* Result Top 광고 — 질문에 대한 직접 답 + 현재 관계 상태 + 관계온도/Romance를

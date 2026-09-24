@@ -61,7 +61,7 @@ describe('ScoreBar (Phase 2.2 item 1 — confidence controls interpretation, not
   test('high confidence shows the number even when the score itself is low (low score != low confidence, item 7)', () => {
     render(<ScoreBar score={3} confidence="high" label="관심도" />)
     expect(screen.getByText('3점')).toBeTruthy()
-    expect(screen.getByText('비교적 뚜렷해요')).toBeTruthy()
+    expect(screen.getAllByText('비교적 뚜렷해요').length).toBeGreaterThan(0)
   })
 })
 
@@ -109,6 +109,14 @@ describe('PreviewResultStep (Phase 2.1 items 2/3/5/9)', () => {
   test('shows the relationship position label', () => {
     render(<PreviewResultStep result={buildResult()} onReset={() => {}} onAddMoreConversation={() => {}} />)
     expect(screen.getByText('가까워지는 썸 같아요')).toBeTruthy()
+  })
+
+  test('promotes the recent conversation temperature as a clearly scoped hero score', () => {
+    render(<PreviewResultStep result={buildResult()} onReset={() => {}} onAddMoreConversation={() => {}} />)
+    expect(screen.getByText('🌡️ 최근 2주 대화 온도')).toBeTruthy()
+    expect(screen.getByText('65')).toBeTruthy()
+    expect(screen.getByText('서로 이어지는 흐름이 보여요.')).toBeTruthy()
+    expect(screen.getAllByText('비교적 뚜렷해요').length).toBeGreaterThan(0)
   })
 
   test('hides deferred paid-report teasers in the current free-product UI', () => {
